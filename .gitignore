@@ -3,3 +3,4 @@ wa_auth_info
 .env
 transactions.json
 .DS_Store
+.vercel

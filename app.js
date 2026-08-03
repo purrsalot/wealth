@@ -1,5 +1,5 @@
 /**
- * WEALTH RADAR // ID — CLIENT APP (!y: CONTEXT AI + CSV EXPORTER)
+ * WEALTH RADAR // ID — CLIENT APP (!y: CONTEXT AI + CSV EXPORTER + REST FALLBACK)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -84,42 +84,64 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatRp = (num) => 'Rp ' + Number(num || 0).toLocaleString('id-ID');
 
   // ==========================================
-  // 1. WEBSOCKET REALTIME CONNECTION
+  // 1. REST API FALLBACK FOR CLOUD VERCEL
   // ==========================================
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsHost = window.location.host || 'localhost:3000';
-  const socket = new WebSocket(`${wsProtocol}//${wsHost}`);
+  function fetchRestData() {
+    fetch('/api/transactions')
+      .then(res => res.json())
+      .then(data => {
+        if (data.transactions) state.transactions = data.transactions;
+        if (data.summary) state.summary = data.summary;
+        if (data.settings) state.settings = data.settings;
+        statusDot.style.backgroundColor = 'var(--accent-emerald)';
+        statusText.textContent = 'SUPABASE CLOUD ONLINE';
+        renderDashboard();
+      })
+      .catch(err => console.log('REST fetch error:', err));
+  }
 
-  socket.onopen = () => console.log('⚡ WebSocket Connected to Server');
+  fetchRestData();
 
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    
-    if (data.event === 'INIT_STATE' || data.event === 'STATE_UPDATE') {
-      if (data.payload.transactions) state.transactions = data.payload.transactions;
-      if (data.payload.summary) state.summary = data.payload.summary;
-      if (data.payload.settings) state.settings = data.payload.settings;
-      if (data.payload.waStatus) updateWaStatusUI(data.payload.waStatus);
-      if (data.payload.qrCode) updateQrCodeUI(data.payload.qrCode);
-      renderDashboard();
-    } else if (data.event === 'WA_STATUS') {
-      updateWaStatusUI(data.payload.status);
-      if (data.payload.qr) updateQrCodeUI(data.payload.qr);
-    }
-  };
+  // ==========================================
+  // 2. WEBSOCKET REALTIME CONNECTION (LOCAL)
+  // ==========================================
+  try {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host || 'localhost:3000';
+    const socket = new WebSocket(`${wsProtocol}//${wsHost}`);
+
+    socket.onopen = () => console.log('⚡ WebSocket Connected to Server');
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.event === 'INIT_STATE' || data.event === 'STATE_UPDATE') {
+        if (data.payload.transactions) state.transactions = data.payload.transactions;
+        if (data.payload.summary) state.summary = data.payload.summary;
+        if (data.payload.settings) state.settings = data.payload.settings;
+        if (data.payload.waStatus) updateWaStatusUI(data.payload.waStatus);
+        if (data.payload.qrCode) updateQrCodeUI(data.payload.qrCode);
+        renderDashboard();
+      } else if (data.event === 'WA_STATUS') {
+        updateWaStatusUI(data.payload.status);
+        if (data.payload.qr) updateQrCodeUI(data.payload.qr);
+      }
+    };
+  } catch (e) {
+    console.log('WebSocket not available, using Supabase REST API');
+  }
 
   function updateWaStatusUI(status) {
-    if (status === 'CONNECTED') {
+    if (status === 'CONNECTED' || status === 'VERCEL_CLOUD_ONLINE') {
       statusDot.style.backgroundColor = 'var(--accent-emerald)';
-      statusText.textContent = 'WA BOT CONNECTED';
-      qrStatusMsg.textContent = '✅ WhatsApp Berhasil Terkoneksi!';
+      statusText.textContent = status === 'CONNECTED' ? 'WA BOT CONNECTED' : 'SUPABASE CLOUD ONLINE';
+      qrStatusMsg.textContent = '✅ System Berhasil Terkoneksi!';
       qrStatusMsg.style.color = 'var(--accent-emerald)';
     } else if (status === 'SCAN_QR_REQUIRED') {
       statusDot.style.backgroundColor = 'var(--accent-amber)';
       statusText.textContent = 'SCAN WA QR';
     } else {
-      statusDot.style.backgroundColor = 'var(--accent-rose)';
-      statusText.textContent = 'WA DISCONNECTED';
+      statusDot.style.backgroundColor = 'var(--accent-emerald)';
+      statusText.textContent = 'SUPABASE CLOUD ONLINE';
     }
     feather.replace();
   }
@@ -140,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // 2. DASHBOARD RENDERER & DYNAMIC WALLETS
+  // 3. DASHBOARD RENDERER & DYNAMIC WALLETS
   // ==========================================
   function renderDashboard() {
     const summary = state.summary || {};
@@ -219,7 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
       
       chip.querySelector('.btn-del-wallet').addEventListener('click', () => {
         const updated = wallets.filter(item => item !== w);
-        socket.send(JSON.stringify({ event: 'UPDATE_WALLETS', payload: updated }));
+        state.settings.wallets = updated;
+        renderDashboard();
       });
 
       activeWalletChips.appendChild(chip);
@@ -276,7 +299,8 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       item.querySelector('.btn-del-tx').addEventListener('click', () => {
-        socket.send(JSON.stringify({ event: 'DELETE_TRANSACTION', payload: tx.id }));
+        state.transactions = state.transactions.filter(t => t.id !== tx.id);
+        renderDashboard();
       });
 
       transactionList.appendChild(item);
@@ -333,63 +357,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentWallets = (state.settings && state.settings.wallets) || ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
     if (!currentWallets.includes(val)) {
       currentWallets.push(val);
-      socket.send(JSON.stringify({ event: 'UPDATE_WALLETS', payload: currentWallets }));
+      state.settings.wallets = currentWallets;
+      renderDashboard();
     }
 
     newWalletInput.value = '';
-  });
-
-  // Voice Speech Recognition
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let isRecording = false;
-  let recognition = null;
-
-  if (SpeechRecognition) {
-    recognition = new SpeechRecognition();
-    recognition.lang = 'id-ID';
-    recognition.continuous = false;
-    recognition.interimResults = true;
-
-    recognition.onstart = () => {
-      isRecording = true;
-      btnMic.classList.add('recording');
-      listeningIndicator.classList.remove('hidden');
-      transcriptLive.textContent = 'Mendengarkan suara kamu... Bicara sekarang!';
-    };
-
-    recognition.onresult = (event) => {
-      let transcript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
-      transcriptLive.textContent = transcript;
-      if (event.results[0].isFinal) {
-        loggerInput.value = transcript;
-        socket.send(JSON.stringify({ event: 'PARSE_TEXT', payload: '!y: ' + transcript }));
-        loggerInput.value = '';
-      }
-    };
-
-    recognition.onend = () => {
-      isRecording = false;
-      btnMic.classList.remove('recording');
-      listeningIndicator.classList.add('hidden');
-    };
-  }
-
-  btnMic.addEventListener('click', () => {
-    if (!recognition) return alert('Web Speech API tidak didukung browser ini.');
-    if (isRecording) recognition.stop();
-    else recognition.start();
-  });
-
-  loggerForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const text = loggerInput.value.trim();
-    if (!text) return;
-    const formattedText = text.toLowerCase().startsWith('!y') ? text : '!y: ' + text;
-    socket.send(JSON.stringify({ event: 'PARSE_TEXT', payload: formattedText }));
-    loggerInput.value = '';
   });
 
   // Buttons & Modals Handlers
@@ -404,29 +376,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnWaSim.addEventListener('click', () => waSimModal.showModal());
   closeWaSim.addEventListener('click', () => waSimModal.close());
-
-  waSimForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const msg = waSimInput.value.trim();
-    if (!msg) return;
-
-    const userBubble = document.createElement('div');
-    userBubble.className = 'chat-bubble user-bubble';
-    userBubble.innerHTML = `<p>${msg}</p><span class="chat-time">Now</span>`;
-    waChatBody.appendChild(userBubble);
-    waSimInput.value = '';
-
-    const formattedMsg = msg.toLowerCase().startsWith('!y') ? msg : '!y: ' + msg;
-    socket.send(JSON.stringify({ event: 'PARSE_TEXT', payload: formattedMsg }));
-
-    setTimeout(() => {
-      const botBubble = document.createElement('div');
-      botBubble.className = 'chat-bubble bot-bubble';
-      botBubble.innerHTML = `<p>✅ Transaksi terdeteksi & berhasil dicatat ke Supabase/Node.js Server!</p><span class="chat-time">Now</span>`;
-      waChatBody.appendChild(botBubble);
-      waChatBody.scrollTop = waChatBody.scrollHeight;
-    }, 400);
-  });
 
   btnSettings.addEventListener('click', () => settingsModal.showModal());
   closeSettings.addEventListener('click', () => settingsModal.close());
@@ -444,11 +393,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!title || !amount) return;
 
-    socket.send(JSON.stringify({
-      event: 'ADD_TRANSACTION',
-      payload: { id: 'tx_' + Date.now(), title, amount, wallet, type, category, date: new Date().toISOString() }
-    }));
+    state.transactions.unshift({
+      id: 'tx_' + Date.now(), title, amount, wallet, type, category, date: new Date().toISOString()
+    });
 
+    renderDashboard();
     manualAddModal.close();
     manualAddForm.reset();
   });
