@@ -19,7 +19,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <div class="bg-noise"></div>
+        <div className="bg-noise"></div>
         {children}
       </body>
     </html>
