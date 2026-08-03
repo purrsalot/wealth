@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WEALTH RADAR // ID — Context AI & Custom Multi-Wallets</title>
+  <meta name="description" content="Aplikasi pencatat keuangan pribadi & radar net worth berbasis !y: Context AI, Supabase Realtime DB, dan Custom Multi-Wallets.">
+  
+  <!-- Google Fonts: Outfit & Space Grotesk -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- Feather Icons -->
+  <script src="https://unpkg.com/feather-icons"></script>
+  
+  <!-- QRCode.js Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <!-- Background Noise & Grid Overlay -->
+  <div class="bg-noise"></div>
+  <div class="bg-grid"></div>
+
+  <div class="app-container">
+
+    <!-- Top Navigation Header -->
+    <header class="main-header">
+      <div class="brand-block">
+        <h1 class="brand-title">WEALTH RADAR<span class="brand-accent">//ID</span></h1>
+      </div>
+
+      <div class="header-actions">
+        <div class="system-status" id="systemStatusPill">
+          <span class="status-dot" id="statusDot"></span>
+          <span class="status-text" id="statusText">CONNECTING WA...</span>
+        </div>
+
+        <button class="btn btn-wa-share" id="btnWaQr" title="Scan QR WhatsApp">
+          <i data-feather="qr-code"></i>
+          <span>SCAN WA QR</span>
+        </button>
+
+        <button class="btn btn-wa-share" id="btnWaShare" title="Kirim Laporan ke WhatsApp">
+          <i data-feather="send"></i>
+          <span>WA SHARE</span>
+        </button>
+
+        <button class="btn btn-wa-sim" id="btnWaSim" title="Buka WhatsApp Simulator">
+          <i data-feather="message-square"></i>
+          <span>SIMULATOR</span>
+        </button>
+
+        <button class="btn btn-icon" id="btnSettings" title="Pengaturan & Backup Data">
+          <i data-feather="sliders"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Quick Voice & Text AI Input Bar -->
+    <section class="logger-section">
+      <div class="logger-card">
+        <div class="logger-header">
+          <span class="logger-badge"><i data-feather="zap"></i> QUICK LOGGER (!y: CONTEXT AI)</span>
+          <span class="logger-hint">Coba di WA: <i>"!y: gopay Beli kopi 25rb"</i> atau <i>"!y total"</i></span>
+        </div>
+
+        <form id="loggerForm" class="logger-form">
+          <button type="button" id="btnMic" class="mic-button" title="Tekan untuk Rekam Suara">
+            <i data-feather="mic" id="micIcon"></i>
+            <span class="mic-pulse"></span>
+          </button>
+
+          <input 
+            type="text" 
+            id="loggerInput" 
+            class="logger-input" 
+            placeholder="Ketik '!y: bca Dapat gaji 10jt' atau tekan mik untuk bicara..."
+            autocomplete="off" 
+            required
+          />
+
+          <button type="submit" class="btn btn-primary btn-submit-log">
+            <span>CATAT</span>
+            <i data-feather="corner-down-left"></i>
+          </button>
+        </form>
+
+        <div id="listeningIndicator" class="listening-indicator hidden">
+          <div class="sound-wave">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <span id="transcriptLive">Mendengarkan suara kamu... Sampaikan transaksimu!</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Dashboard Grid (Studio Steve Style) -->
+    <main class="dashboard-grid">
+      
+      <!-- Card 1: Financial Health Score -->
+      <article class="dash-card health-card">
+        <div class="card-header-label">
+          <span class="card-num">[01]</span>
+          <span class="card-title">FINANCIAL HEALTH SCORE</span>
+        </div>
+
+        <div class="health-body">
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 160 160">
+              <circle class="gauge-bg" cx="80" cy="80" r="70"></circle>
+              <circle class="gauge-progress" id="gaugeProgress" cx="80" cy="80" r="70"></circle>
+            </svg>
+            <div class="gauge-value-box">
+              <span class="gauge-score" id="healthScore">85</span>
+              <span class="gauge-max">/100</span>
+            </div>
+          </div>
+
+          <div class="health-meta">
+            <div class="health-badge" id="healthBadge">EXCELLENT</div>
+            <p class="health-desc" id="healthDesc">Alokasi tabungan kamu aman di atas 20% & rasio pengeluaran sangat disiplin bulan ini.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 2: Net Worth & Balance Overview -->
+      <article class="dash-card balance-card">
+        <div class="card-header-label">
+          <span class="card-num">[02]</span>
+          <span class="card-title">NET WORTH & BALANCES</span>
+        </div>
+
+        <div class="balance-display">
+          <span class="currency-prefix">IDR</span>
+          <h2 class="total-balance" id="netWorthDisplay">0</h2>
+          <div class="balance-sub">
+            <span class="growth-tag positive" id="monthlyGrowthTag"><i data-feather="trending-up"></i> +0% bulan ini</span>
+            <span class="period-tag">ESTIMATED ASSETS</span>
+          </div>
+        </div>
+
+        <div class="balance-split-row">
+          <div class="split-box income-box">
+            <span class="split-label"><i data-feather="arrow-down-left"></i> TOTAL INFLOW</span>
+            <span class="split-val" id="totalIncomeDisplay">Rp 0</span>
+          </div>
+          <div class="split-box expense-box">
+            <span class="split-label"><i data-feather="arrow-up-right"></i> TOTAL OUTFLOW</span>
+            <span class="split-val" id="totalExpenseDisplay">Rp 0</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 3: 50/30/20 Budget Radar Visualizer -->
+      <article class="dash-card radar-card">
+        <div class="card-header-label">
+          <span class="card-num">[03]</span>
+          <span class="card-title">50/30/20 BUDGET RADAR</span>
+        </div>
+
+        <div class="radar-bars-container">
+          
+          <div class="radar-item">
+            <div class="radar-item-header">
+              <span class="radar-cat-title"><i data-feather="shield"></i> NEEDS (Kebutuhan Pokok - 50%)</span>
+              <span class="radar-percent" id="needsPct">0%</span>
+            </div>
+            <div class="radar-bar-bg">
+              <div class="radar-bar-fill needs-fill" id="needsBar" style="width: 0%"></div>
+            </div>
+            <div class="radar-item-sub">
+              <span id="needsSpent">Rp 0 spent</span>
+              <span class="radar-limit" id="needsLimit">Target: Rp 0</span>
+            </div>
+          </div>
+
+          <div class="radar-item">
+            <div class="radar-item-header">
+              <span class="radar-cat-title"><i data-feather="heart"></i> WANTS (Gaya Hidup - 30%)</span>
+              <span class="radar-percent" id="wantsPct">0%</span>
+            </div>
+            <div class="radar-bar-bg">
+              <div class="radar-bar-fill wants-fill" id="wantsBar" style="width: 0%"></div>
+            </div>
+            <div class="radar-item-sub">
+              <span id="wantsSpent">Rp 0 spent</span>
+              <span class="radar-limit" id="wantsLimit">Target: Rp 0</span>
+            </div>
+          </div>
+
+          <div class="radar-item">
+            <div class="radar-item-header">
+              <span class="radar-cat-title"><i data-feather="pie-chart"></i> SAVINGS & INVEST (20%)</span>
+              <span class="radar-percent" id="savingsPct">0%</span>
+            </div>
+            <div class="radar-bar-bg">
+              <div class="radar-bar-fill savings-fill" id="savingsBar" style="width: 0%"></div>
+            </div>
+            <div class="radar-item-sub">
+              <span id="savingsSpent">Rp 0 saved</span>
+              <span class="radar-limit" id="savingsLimit">Target: Rp 0</span>
+            </div>
+          </div>
+
+        </div>
+      </article>
+
+      <!-- Card 4: Multi-Wallet Breakdown & Accounts -->
+      <article class="dash-card wallet-card">
+        <div class="card-header-label" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <div>
+            <span class="card-num">[04]</span>
+            <span class="card-title">MULTI-DOMPET & BANK BREAKDOWN</span>
+          </div>
+          <button class="btn btn-outline btn-sm" id="btnEditWallets" style="padding: 4px 10px; font-size: 11px;">
+            <i data-feather="edit-2"></i> EDIT DOMPET
+          </button>
+        </div>
+
+        <div class="wallet-list-grid" id="walletListGrid">
+          <!-- Dynamically rendered wallet chips -->
+        </div>
+      </article>
+
+    </main>
+
+    <!-- Recent Transactions Feed Section -->
+    <section class="feed-section">
+      <div class="feed-header">
+        <div class="feed-title-block">
+          <span class="feed-tag">[SUPABASE REALTIME FEED]</span>
+          <h3 class="feed-heading">RIWAYAT TRANSAKSI & LOG</h3>
+        </div>
+
+        <div class="feed-controls">
+          <div class="search-box">
+            <i data-feather="search"></i>
+            <input type="text" id="searchInput" placeholder="Cari transaksi / dompet..." />
+          </div>
+
+          <button class="btn btn-outline" id="btnManualAdd">
+            <i data-feather="plus"></i>
+            <span>TAMBAH MANUAL</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter Category Tabs -->
+      <div class="category-tabs" id="categoryTabs">
+        <button class="tab-btn active" data-cat="ALL">SEMUA</button>
+        <button class="tab-btn" data-cat="FOOD">FOOD & DRINK</button>
+        <button class="tab-btn" data-cat="TRANSPORT">TRANSPORT</button>
+        <button class="tab-btn" data-cat="BILLS">BILLS & UTILITIES</button>
+        <button class="tab-btn" data-cat="SHOPPING">SHOPPING</button>
+        <button class="tab-btn" data-cat="SALARY">SALARY/INCOME</button>
+        <button class="tab-btn" data-cat="INVESTMENT">SAVINGS & INVEST</button>
+      </div>
+
+      <!-- Transaction List -->
+      <div class="transaction-list" id="transactionList">
+        <div class="empty-state" id="emptyState">
+          <i data-feather="inbox"></i>
+          <p>Belum ada transaksi. Ketik '!y: gopay Beli kopi 25rb' atau '!y total'!</p>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /app-container -->
+
+  <!-- MODAL: Edit Wallets Modal -->
+  <dialog id="walletModal" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i data-feather="credit-card"></i> KELOLA DAFTAR DOMPET / BANK</h3>
+        <button class="btn-close-modal" id="closeWalletModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+          Tambah, hapus, atau atur daftar nama dompet digital & akun bank kamu.
+        </p>
+
+        <form id="addWalletForm" style="display: flex; gap: 8px; margin-bottom: 16px;">
+          <input type="text" id="newWalletInput" placeholder="Nama dompet baru (misal: SEABANK / JAGO / BLU)..." style="flex: 1;" required />
+          <button type="submit" class="btn btn-primary" style="padding: 0 16px;">+ TAMBAH</button>
+        </form>
+
+        <label style="font-size: 11px; font-weight: 700; color: var(--accent-cyan); display: block; margin-bottom: 8px;">DAFTAR DOMPET AKTIF:</label>
+        <div id="activeWalletChips" style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <!-- Render active wallet tags with delete button -->
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: WhatsApp QR Code Pairing -->
+  <dialog id="waQrModal" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i data-feather="qr-code"></i> SCAN WHATSAPP QR CODE</h3>
+        <button class="btn-close-modal" id="closeWaQr">&times;</button>
+      </div>
+      <div class="modal-body" style="text-align: center; align-items: center;">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+          Buka WhatsApp di HP kamu → <b>Linked Devices (Perangkat Tertaut)</b> → Scan QR Code di bawah ini:
+        </p>
+        
+        <div id="qrCodeContainer" style="background: #fff; padding: 16px; border-radius: 12px; display: inline-block;"></div>
+        <p id="qrStatusMsg" style="font-size: 12px; color: var(--accent-amber); margin-top: 14px;">Memuat QR Code dari server Node.js...</p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: WhatsApp Chat Simulator -->
+  <dialog id="waSimModal" class="modal-dialog">
+    <div class="modal-content wa-sim-content">
+      <div class="modal-header">
+        <div class="wa-header-user">
+          <div class="wa-avatar"><i data-feather="cpu"></i></div>
+          <div class="wa-user-info">
+            <h4>WealthRadar WA Bot</h4>
+            <span class="online-status">Online • !y: Context AI Active</span>
+          </div>
+        </div>
+        <button class="btn-close-modal" id="closeWaSim">&times;</button>
+      </div>
+
+      <div class="wa-chat-body" id="waChatBody">
+        <div class="chat-time-divider">HARI INI</div>
+        
+        <div class="chat-bubble bot-bubble">
+          <p>Halo! 👋 Ketik transaksi dengan prefix <code>!y:</code> atau cek total dengan <code>!y total</code>!</p>
+          <p class="chat-example">Pemasukan: <code>!y: bca Dapat transferan 500rb</code><br>Summary: <code>!y total</code></p>
+          <span class="chat-time">02:00</span>
+        </div>
+      </div>
+
+      <form id="waSimForm" class="wa-chat-footer">
+        <input 
+          type="text" 
+          id="waSimInput" 
+          placeholder="Ketik '!y total' atau '!y: bca Dapat 500rb'..." 
+          autocomplete="off" 
+          required 
+        />
+        <button type="submit" class="btn-wa-send"><i data-feather="send"></i></button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Settings & Data Backup -->
+  <dialog id="settingsModal" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i data-feather="sliders"></i> PENGATURAN & EXPORT DATA</h3>
+        <button class="btn-close-modal" id="closeSettings">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="setting-group">
+          <label>Target Gaji / Pemasukan Bulanan (IDR):</label>
+          <input type="number" id="targetIncomeInput" placeholder="10000000" value="10000000" />
+        </div>
+
+        <hr class="setting-divider" />
+
+        <div class="setting-actions-row" style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-primary" id="btnExportCsv" style="flex: 1;"><i data-feather="file-text"></i> Export Excel (CSV)</button>
+          <button type="button" class="btn btn-outline" id="btnExportJson" style="flex: 1;"><i data-feather="download"></i> Export JSON</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Add Manual Transaction -->
+  <dialog id="manualAddModal" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i data-feather="plus-circle"></i> TAMBAH TRANSAKSI MANUAL</h3>
+        <button class="btn-close-modal" id="closeManualAdd">&times;</button>
+      </div>
+
+      <form id="manualAddForm" class="modal-body">
+        <div class="setting-group">
+          <label>Deskripsi Transaksi:</label>
+          <input type="text" id="manualTitle" placeholder="Misal: Makan Siang Warteg" required />
+        </div>
+
+        <div class="setting-group">
+          <label>Nominal (IDR):</label>
+          <input type="number" id="manualAmount" placeholder="25000" required />
+        </div>
+
+        <div class="setting-group">
+          <label>Sumber Dompet / Bank:</label>
+          <select id="manualWallet">
+            <!-- Dynamically rendered options -->
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label>Tipe Transaksi:</label>
+          <select id="manualType">
+            <option value="EXPENSE">EXPENSE (Pengeluaran)</option>
+            <option value="INCOME">INCOME (Pemasukan)</option>
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label>Kategori (50/30/20 Rule):</label>
+          <select id="manualCategory">
+            <option value="FOOD">Food & Drink (Needs 50%)</option>
+            <option value="TRANSPORT">Transportasi (Needs 50%)</option>
+            <option value="BILLS">Bills & Tagihan (Needs 50%)</option>
+            <option value="SHOPPING">Shopping & Hiburan (Wants 30%)</option>
+            <option value="SALARY">Gaji & Income Utama</option>
+            <option value="INVESTMENT">Tabungan & Investasi (20%)</option>
+          </select>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">SIMPAN TRANSAKSI</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- External App JS -->
+  <script src="app.js"></script>
+  <script>
+    feather.replace();
+  </script>
+</body>
+</html>
