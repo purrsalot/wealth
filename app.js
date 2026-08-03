@@ -84,29 +84,59 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatRp = (num) => 'Rp ' + Number(num || 0).toLocaleString('id-ID');
 
   // ==========================================
-  // 1. WEBSOCKET REALTIME CONNECTION
+  // 1. DATA CONNECTION (WebSocket + HTTP Fallback)
   // ==========================================
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsHost = window.location.host || 'localhost:3000';
-  const socket = new WebSocket(`${wsProtocol}//${wsHost}`);
+  let socket = null;
 
-  socket.onopen = () => console.log('⚡ WebSocket Connected to Server');
-
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    
-    if (data.event === 'INIT_STATE' || data.event === 'STATE_UPDATE') {
-      if (data.payload.transactions) state.transactions = data.payload.transactions;
-      if (data.payload.summary) state.summary = data.payload.summary;
-      if (data.payload.settings) state.settings = data.payload.settings;
-      if (data.payload.waStatus) updateWaStatusUI(data.payload.waStatus);
-      if (data.payload.qrCode) updateQrCodeUI(data.payload.qrCode);
+  // HTTP Fallback - works on Vercel & everywhere
+  async function fetchDataHTTP() {
+    try {
+      const res = await window.fetch('/api/transactions');
+      const data = await res.json();
+      if (data.transactions) state.transactions = data.transactions;
+      if (data.summary) state.summary = data.summary;
+      if (data.settings) state.settings = data.settings;
       renderDashboard();
-    } else if (data.event === 'WA_STATUS') {
-      updateWaStatusUI(data.payload.status);
-      if (data.payload.qr) updateQrCodeUI(data.payload.qr);
+      console.log('📡 Data loaded via HTTP API');
+    } catch (e) {
+      console.warn('HTTP fetch failed:', e);
     }
-  };
+  }
+
+  // Try WebSocket first (local dev), fallback to HTTP (Vercel)
+  try {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host || 'localhost:3000';
+    socket = new WebSocket(`${wsProtocol}//${wsHost}`);
+
+    socket.onopen = () => console.log('⚡ WebSocket Connected to Server');
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      if (data.event === 'INIT_STATE' || data.event === 'STATE_UPDATE') {
+        if (data.payload.transactions) state.transactions = data.payload.transactions;
+        if (data.payload.summary) state.summary = data.payload.summary;
+        if (data.payload.settings) state.settings = data.payload.settings;
+        if (data.payload.waStatus) updateWaStatusUI(data.payload.waStatus);
+        if (data.payload.qrCode) updateQrCodeUI(data.payload.qrCode);
+        renderDashboard();
+      } else if (data.event === 'WA_STATUS') {
+        updateWaStatusUI(data.payload.status);
+        if (data.payload.qr) updateQrCodeUI(data.payload.qr);
+      }
+    };
+
+    // If WebSocket fails to connect, use HTTP
+    socket.onerror = () => { fetchDataHTTP(); };
+    socket.onclose = () => { console.log('WS closed, using HTTP fallback'); };
+  } catch (e) {
+    // WebSocket not available, use HTTP
+    fetchDataHTTP();
+  }
+
+  // Always load data via HTTP on page load as a safety net
+  fetchDataHTTP();
 
   function updateWaStatusUI(status) {
     if (status === 'CONNECTED') {

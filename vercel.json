@@ -1,9 +1,11 @@
 {
-  "version": 2,
-  "rewrites": [
+  "cleanUrls": true,
+  "headers": [
     {
       "source": "/(.*)",
-      "destination": "/api/index.js"
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
     }
   ]
 }
