@@ -84,59 +84,63 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatRp = (num) => 'Rp ' + Number(num || 0).toLocaleString('id-ID');
 
   // ==========================================
-  // 1. DATA CONNECTION (WebSocket + HTTP Fallback)
+  // 1. DATA CONNECTION (HTTP API → Supabase)
   // ==========================================
-  let socket = null;
-
-  // HTTP Fallback - works on Vercel & everywhere
-  async function fetchDataHTTP() {
+  async function fetchData() {
     try {
+      statusText.textContent = 'LOADING...';
       const res = await window.fetch('/api/transactions');
       const data = await res.json();
       if (data.transactions) state.transactions = data.transactions;
       if (data.summary) state.summary = data.summary;
       if (data.settings) state.settings = data.settings;
+      statusDot.style.backgroundColor = 'var(--accent-emerald)';
+      statusText.textContent = 'SUPABASE CONNECTED';
       renderDashboard();
-      console.log('📡 Data loaded via HTTP API');
+      console.log('📡 Data loaded from Supabase via API');
     } catch (e) {
-      console.warn('HTTP fetch failed:', e);
+      statusDot.style.backgroundColor = 'var(--accent-rose)';
+      statusText.textContent = 'OFFLINE';
+      console.warn('Fetch failed:', e);
     }
   }
 
-  // Try WebSocket first (local dev), fallback to HTTP (Vercel)
-  try {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.host || 'localhost:3000';
-    socket = new WebSocket(`${wsProtocol}//${wsHost}`);
-
-    socket.onopen = () => console.log('⚡ WebSocket Connected to Server');
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.event === 'INIT_STATE' || data.event === 'STATE_UPDATE') {
-        if (data.payload.transactions) state.transactions = data.payload.transactions;
-        if (data.payload.summary) state.summary = data.payload.summary;
-        if (data.payload.settings) state.settings = data.payload.settings;
-        if (data.payload.waStatus) updateWaStatusUI(data.payload.waStatus);
-        if (data.payload.qrCode) updateQrCodeUI(data.payload.qrCode);
-        renderDashboard();
-      } else if (data.event === 'WA_STATUS') {
-        updateWaStatusUI(data.payload.status);
-        if (data.payload.qr) updateQrCodeUI(data.payload.qr);
-      }
-    };
-
-    // If WebSocket fails to connect, use HTTP
-    socket.onerror = () => { fetchDataHTTP(); };
-    socket.onclose = () => { console.log('WS closed, using HTTP fallback'); };
-  } catch (e) {
-    // WebSocket not available, use HTTP
-    fetchDataHTTP();
+  async function apiAddTransaction(payload) {
+    try {
+      const res = await window.fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.transactions) state.transactions = data.transactions;
+      if (data.summary) state.summary = data.summary;
+      renderDashboard();
+      return data;
+    } catch (e) {
+      console.error('Add transaction failed:', e);
+      alert('Gagal menambah transaksi: ' + e.message);
+    }
   }
 
-  // Always load data via HTTP on page load as a safety net
-  fetchDataHTTP();
+  async function apiDeleteTransaction(id) {
+    try {
+      const res = await window.fetch('/api/transactions?id=' + encodeURIComponent(id), {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.transactions) state.transactions = data.transactions;
+      if (data.summary) state.summary = data.summary;
+      renderDashboard();
+      return data;
+    } catch (e) {
+      console.error('Delete transaction failed:', e);
+      alert('Gagal menghapus transaksi: ' + e.message);
+    }
+  }
+
+  // Load data on page load
+  fetchData();
 
   function updateWaStatusUI(status) {
     if (status === 'CONNECTED') {
@@ -249,7 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
       
       chip.querySelector('.btn-del-wallet').addEventListener('click', () => {
         const updated = wallets.filter(item => item !== w);
-        socket.send(JSON.stringify({ event: 'UPDATE_WALLETS', payload: updated }));
+        state.settings.wallets = updated;
+        renderDashboard();
       });
 
       activeWalletChips.appendChild(chip);
@@ -306,7 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       item.querySelector('.btn-del-tx').addEventListener('click', () => {
-        socket.send(JSON.stringify({ event: 'DELETE_TRANSACTION', payload: tx.id }));
+        apiDeleteTransaction(tx.id);
       });
 
       transactionList.appendChild(item);
@@ -363,7 +368,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentWallets = (state.settings && state.settings.wallets) || ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
     if (!currentWallets.includes(val)) {
       currentWallets.push(val);
-      socket.send(JSON.stringify({ event: 'UPDATE_WALLETS', payload: currentWallets }));
+      state.settings.wallets = currentWallets;
+      renderDashboard();
     }
 
     newWalletInput.value = '';
@@ -395,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
       transcriptLive.textContent = transcript;
       if (event.results[0].isFinal) {
         loggerInput.value = transcript;
-        socket.send(JSON.stringify({ event: 'PARSE_TEXT', payload: '!y: ' + transcript }));
+        apiAddTransaction({ rawText: '!y: ' + transcript });
         loggerInput.value = '';
       }
     };
@@ -418,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const text = loggerInput.value.trim();
     if (!text) return;
     const formattedText = text.toLowerCase().startsWith('!y') ? text : '!y: ' + text;
-    socket.send(JSON.stringify({ event: 'PARSE_TEXT', payload: formattedText }));
+    apiAddTransaction({ rawText: formattedText });
     loggerInput.value = '';
   });
 
@@ -447,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
     waSimInput.value = '';
 
     const formattedMsg = msg.toLowerCase().startsWith('!y') ? msg : '!y: ' + msg;
-    socket.send(JSON.stringify({ event: 'PARSE_TEXT', payload: formattedMsg }));
+    apiAddTransaction({ rawText: formattedMsg });
 
     setTimeout(() => {
       const botBubble = document.createElement('div');
@@ -474,10 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!title || !amount) return;
 
-    socket.send(JSON.stringify({
-      event: 'ADD_TRANSACTION',
-      payload: { id: 'tx_' + Date.now(), title, amount, wallet, type, category, date: new Date().toISOString() }
-    }));
+    apiAddTransaction({ title, amount, wallet, type, category, date: new Date().toISOString() });
 
     manualAddModal.close();
     manualAddForm.reset();
