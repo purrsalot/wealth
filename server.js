@@ -470,7 +470,7 @@ if (require.main === module && !process.env.VERCEL) {
       // ==========================================
       waSocket.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg || !msg.message) return;
 
         const text = msg.message.conversation
           || msg.message.extendedTextMessage?.text
