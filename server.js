@@ -368,7 +368,7 @@ if (require.main === module && !process.env.VERCEL) {
   // WHATSAPP BAILEYS BOT
   // ==========================================
   try {
-    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+    const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
     const qrcodeTerm = require('qrcode-terminal');
 
     async function startWhatsAppBot() {
@@ -376,7 +376,12 @@ if (require.main === module && !process.env.VERCEL) {
       const waSocket = makeWASocket({
         auth: authState,
         printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '22.04.4']
+        browser: Browsers.macOS('Desktop'),
+        syncFullHistory: false,
+        markOnlineOnConnect: true,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000
       });
 
       waSocket.ev.on('creds.update', saveCreds);
