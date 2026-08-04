@@ -117,7 +117,7 @@ async function loadData() {
           }
 
           return { ...t, title, wallet: (wallet || 'CASH').toUpperCase() };
-        }).filter(t => !t.title.includes('WEALTH RADAR') && !t.title.includes('background daemon'));
+        }).filter(t => !t.title.includes('WEALTH RADAR') && !t.title.includes('background daemon') && !t.title.includes('KAEL') && !t.title.includes('HALO BOSS'));
         internalLog(`📦 Memuat ${transactions.length} transaksi dari Supabase Cloud DB`);
         return;
       }
@@ -737,8 +737,11 @@ if (require.main === module && !process.env.VERCEL) {
         const lower = text.toLowerCase().trim();
         if (!lower) return;
 
-        // Ignore Bot's Own Reply Echoes
-        if (text.includes('TERCATAT!*') || text.includes('WEALTH RADAR') || text.includes('✅ Success') || text.includes('🔄 *TRANSFER') || text.includes('✏️ *TRANSAKSI') || text.includes('SINKRONISASI SELESAI')) {
+        // Ignore Bot's Own Reply Echoes (Prevents bot from parsing its own replies)
+        if (text.includes('KAEL') || text.includes('TERCATAT') || text.includes('WEALTH RADAR') || text.includes('✅ Success') || text.includes('HALO BOSS') || text.includes('SINKRONISASI SELESAI') || text.includes('BERHASIL')) {
+          return;
+        }
+        if (msg.key.fromMe && /[\u{1F300}-\u{1F9FF}]/u.test(text) && (text.includes('•') || text.includes('Rp') || text.includes('!y'))) {
           return;
         }
 
