@@ -448,16 +448,16 @@ if (require.main === module && !process.env.VERCEL) {
           console.log('==================================================\n');
           broadcast('WA_STATUS', { status: 'CONNECTED' });
 
-          // Send notification if waking up from Sleep
+          // Auto Sync & Send notification when waking up from Sleep
           if (global._wasInSleep && lastUserJid) {
             global._wasInSleep = false;
             try {
               const nowStr = new Date().toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
               await waSocket.sendMessage(lastUserJid, { text:
-                `🌙 *NOTIFIKASI: LAPTOP MAC BANGUN DARI SLEEP!*\n\n` +
+                `🌙 *AUTO-SYNC: LAPTOP MAC BANGUN DARI SLEEP!*\n\n` +
                 `🕒 Waktu Bangun: ${nowStr}\n` +
-                `🟢 Status: PM2 Server & Bot WA Kembali *ONLINE*\n\n` +
-                `💡 _Ketik *!y sync* untuk menyelaraskan transaksi yang dikirim saat laptop sleep!_`
+                `🟢 Status: Server PM2 & Bot WA Kembali *ONLINE*\n` +
+                `⚡ *Auto-Sync Aktif*: Semua transaksi pending yang kamu kirim saat laptop sleep otomatis dicatat lengkap dengan tanggal & jam aslinya!`
               });
             } catch (e) {
               console.warn('Sleep notification error:', e.message);
