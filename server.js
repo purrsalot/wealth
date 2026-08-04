@@ -728,6 +728,41 @@ if (require.main === module && !process.env.VERCEL) {
           return;
         }
 
+        // !y saldo [dompet] [nominal] - Set Saldo Awal Dompet
+        if (lower.startsWith('!y saldo') || lower.startsWith('!y set')) {
+          const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (!amtMatch) {
+            await waSocket.sendMessage(jid, { text: '❌ Sertakan nominal saldo awal. Contoh: !y saldo bca 5jt' });
+            return;
+          }
+          let newAmt = parseFloat(amtMatch[1].replace(',', '.'));
+          const unit = (amtMatch[2] || '').toLowerCase();
+          if (unit === 'rb' || unit === 'ribu' || unit === 'k') newAmt *= 1000;
+          else if (unit === 'jt' || unit === 'juta' || unit === 'm') newAmt *= 1000000;
+
+          const targetWallet = walletList.find(w => lower.includes(w.toLowerCase())) || 'CASH';
+
+          const seedTx = {
+            id: 'tx_saldo_' + targetWallet.toLowerCase() + '_' + Date.now(),
+            title: `Saldo Awal ${targetWallet}`,
+            amount: newAmt,
+            type: 'INCOME',
+            category: 'SALARY',
+            wallet: targetWallet,
+            date: new Date().toISOString()
+          };
+
+          await addTransaction(seedTx);
+
+          await waSocket.sendMessage(jid, { text:
+            `💳 *SALDO AWAL ${targetWallet} BERHASIL DISET!*\n\n` +
+            `💰 Nominal Saldo Awal: Rp ${newAmt.toLocaleString('id-ID')}\n` +
+            `✅ Success`
+          });
+          return;
+        }
+
         // !y edit [nominal]
         if (lower.startsWith('!y edit') || lower.startsWith('!y revisi')) {
           if (transactions.length === 0) {
