@@ -87,8 +87,18 @@ async function loadData() {
         .order('date', { ascending: false });
 
       if (!error && data) {
-        transactions = data;
-        internalLog(`📦 Memuat ${data.length} transaksi dari Supabase Cloud DB`);
+        const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+        transactions = data.map(t => {
+          if (!t.wallet || t.wallet === 'CASH') {
+            const titleLower = (t.title || '').toLowerCase();
+            const catLower = (t.category || '').toLowerCase();
+            const found = walletList.find(w => titleLower.includes(w.toLowerCase()) || catLower.includes(w.toLowerCase()));
+            if (found) t.wallet = found;
+            else if (!t.wallet) t.wallet = 'CASH';
+          }
+          return t;
+        });
+        internalLog(`📦 Memuat ${transactions.length} transaksi dari Supabase Cloud DB`);
         return;
       }
     } catch (e) {

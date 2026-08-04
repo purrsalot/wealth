@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const categoryTabs = document.getElementById('categoryTabs');
 
   let currentCategoryFilter = 'ALL';
+  let currentWalletFilter = 'ALL';
   let state = { transactions: [], summary: {}, settings: { wallets: ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'] } };
 
   const formatRp = (num) => 'Rp ' + Number(num || 0).toLocaleString('id-ID');
@@ -309,8 +310,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchVal = searchInput.value.toLowerCase().trim();
     let filtered = (state.transactions || []).filter(t => {
       const matchCat = currentCategoryFilter === 'ALL' || t.category === currentCategoryFilter;
+      const matchWallet = currentWalletFilter === 'ALL' || (t.wallet || 'CASH').toUpperCase() === currentWalletFilter;
       const matchSearch = !searchVal || t.title.toLowerCase().includes(searchVal) || (t.wallet || '').toLowerCase().includes(searchVal);
-      return matchCat && matchSearch;
+      return matchCat && matchWallet && matchSearch;
     });
 
     transactionList.innerHTML = '';
@@ -323,6 +325,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     emptyState.style.display = 'none';
 
+    const walletStyles = {
+      BCA: { bg: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.4)' },
+      MANDIRI: { bg: 'rgba(234, 179, 8, 0.15)', color: '#facc15', border: 'rgba(234, 179, 8, 0.4)' },
+      GOPAY: { bg: 'rgba(6, 182, 212, 0.15)', color: '#22d3ee', border: 'rgba(6, 182, 212, 0.4)' },
+      OVO: { bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.4)' },
+      SHOPEEPAY: { bg: 'rgba(249, 115, 22, 0.15)', color: '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
+      DANA: { bg: 'rgba(2, 132, 199, 0.15)', color: '#38bdf8', border: 'rgba(2, 132, 199, 0.4)' },
+      CASH: { bg: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' }
+    };
+
     filtered.forEach(tx => {
       const item = document.createElement('div');
       item.className = 'tx-item';
@@ -331,6 +343,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const dateFormatted = new Date(tx.date).toLocaleDateString('id-ID', {
         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
       });
+
+      const wName = (tx.wallet || 'CASH').toUpperCase();
+      const ws = walletStyles[wName] || { bg: 'rgba(148, 163, 184, 0.15)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.4)' };
 
       item.innerHTML = `
         <div class="tx-left">
@@ -342,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="tx-meta">
               <span>${dateFormatted}</span>
               <span class="cat-badge">${tx.category}</span>
-              <span class="cat-badge" style="color: var(--accent-cyan);">${tx.wallet || 'CASH'}</span>
+              <span class="cat-badge" style="background: ${ws.bg}; color: ${ws.color}; border: 1px solid ${ws.border}; font-weight: 800;">${wName}</span>
             </div>
           </div>
         </div>
@@ -525,11 +540,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const type = document.getElementById('manualType').value;
     const category = document.getElementById('manualCategory').value;
 
-    if (!title || !amount) return;
-
-    apiAddTransaction({ title, amount, wallet, type, category, date: new Date().toISOString() });
-
     manualAddModal.close();
+    manualAddForm.reset();
+  });
+
+  // Wallet Tabs Filter Listener
+  const walletTabs = document.getElementById('walletTabs');
+  if (walletTabs) {
+    walletTabs.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        walletTabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentWalletFilter = btn.dataset.wallet;
+        renderTransactionFeed();
+      });
+    });
+  }
     manualAddForm.reset();
   });
 
