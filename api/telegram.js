@@ -170,33 +170,192 @@ module.exports = async function handler(req, res) {
 
     const lower = text.toLowerCase().trim();
 
-    // Help & Welcome
-    if (lower === '/start' || lower === '/help' || lower === 'kael' || lower === '!y') {
+    // 1. Menu / Help / Start
+    if (lower === '/start' || lower === '/help' || lower === '/menu' || lower === 'kael' || lower === '!y' || lower === '!y help') {
       await sendTelegramMessage(chatId,
         `✨ *HALO BOSS! AKU KAEL - ASISTEN KEUANGAN PRIBADI KAMU!* 🤖💰\n\n` +
         `*Catat Bebas* ➔ Ketik biasa tanpa ribet, contoh:\n` +
         `• _bca 50k makan siang_\n` +
         `• _dapat uang jajan 356.381 di bca_\n` +
         `• _kevin bayar 300k_\n\n` +
-        `⚡ *Perintah Cepat KAEL*:\n` +
-        `• *!y edit [nominal]* ➔ Revisi transaksi terakhir\n` +
-        `• *!y sisa / !y budget* ➔ Hitung budget aman harian\n` +
-        `• *!y report* ➔ Laporan rekap keuangan\n` +
-        `• *!y piutang* ➔ Catatan utang & pinjaman\n` +
-        `• *!y tf 500k bca ke gopay* ➔ Pindah saldo antar dompet\n` +
-        `• *!y saldo bca 5jt* ➔ Set saldo awal dompet\n` +
-        `• *!y reset* ➔ Reset total income & expense ke 0`
+        `⚡ *Perintah Slash Telegram KAEL*:\n` +
+        `• */report* ➔ Laporan rekap keuangan\n` +
+        `• */sisa* atau */budget* ➔ Hitung budget aman harian\n` +
+        `• */budget 15jt* ➔ Set target budget bulanan\n` +
+        `• */piutang* ➔ Catatan utang & pinjaman\n` +
+        `• */tf 500k bca ke gopay* ➔ Pindah saldo antar dompet\n` +
+        `• */saldo bca 5jt* ➔ Set saldo awal dompet\n` +
+        `• */undo* ➔ Batal / hapus transaksi terakhir\n` +
+        `• */reset* ➔ Reset total income & expense ke 0`
       );
       return res.status(200).json({ ok: true });
     }
 
-    // Secret Reset
-    if (lower === '!y reset' || lower === '!y reset confirm') {
+    // 2. Report (/report atau !y report)
+    if (lower === '/report' || lower === '!y report') {
+      const { data: allData } = await supabase.from('transactions').select('*');
+      let totalInc = 0, totalExp = 0;
+      (allData || []).forEach(t => {
+        const amt = Number(t.amount) || 0;
+        if (t.type === 'INCOME') totalInc += amt;
+        else totalExp += amt;
+      });
+      const netWorth = totalInc - totalExp;
+
+      await sendTelegramMessage(chatId,
+        `*📊 LAPORAN KEUANGAN KAEL* 🤖\n\n` +
+        `💰 *Total Net Worth*: Rp ${netWorth.toLocaleString('id-ID')}\n` +
+        `📈 Total Pemasukan: Rp ${totalInc.toLocaleString('id-ID')}\n` +
+        `📉 Total Pengeluaran: Rp ${totalExp.toLocaleString('id-ID')}\n\n` +
+        `✨ *Pesan KAEL*: Tetap jaga kestabilan finansialmu boss! 🔥`
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    // 3. Budget Calculator & Target (/sisa, /budget, !y sisa, !y budget)
+    if (lower.startsWith('/budget ') || lower.startsWith('!y budget ') || lower.startsWith('/target ') || lower.startsWith('!y target ')) {
+      const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+      if (amtMatch) {
+        let newTarget = parseFloat(amtMatch[1].replace(',', '.'));
+        const unit = (amtMatch[2] || '').toLowerCase();
+        if (unit === 'rb' || unit === 'ribu' || unit === 'k') newTarget *= 1000;
+        else if (unit === 'jt' || unit === 'juta' || unit === 'm') newTarget *= 1000000;
+
+        await sendTelegramMessage(chatId,
+          `🎯 *TARGET BUDGET BULANAN DISET BY KAEL!* 🤖\n\n` +
+          `💰 Nominal Target Income Bulanan: Rp ${newTarget.toLocaleString('id-ID')}\n` +
+          `🛡️ Limit Needs (50%): Rp ${(newTarget * 0.5).toLocaleString('id-ID')}\n` +
+          `🛍️ Limit Wants (30%): Rp ${(newTarget * 0.3).toLocaleString('id-ID')}\n` +
+          `💎 Limit Savings (20%): Rp ${(newTarget * 0.2).toLocaleString('id-ID')}\n\n` +
+          `✅ Target Set!`
+        );
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    if (lower === '/sisa' || lower === '/budget' || lower === '!y sisa' || lower === '!y budget') {
+      const now = new Date();
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const remainingDays = Math.max(1, lastDayOfMonth - now.getDate() + 1);
+
+      const { data: allData } = await supabase.from('transactions').select('*');
+      let inc = 0, exp = 0;
+      (allData || []).forEach(t => {
+        const amt = Number(t.amount) || 0;
+        if (t.type === 'INCOME') inc += amt;
+        else exp += amt;
+      });
+      const remainingMoney = inc - exp;
+      const safeDaily = Math.max(0, Math.floor(remainingMoney / remainingDays));
+
+      await sendTelegramMessage(chatId,
+        `*🧮 KALKULATOR BUDGET BULANAN BY KAEL* 🤖\n\n` +
+        `💰 Sisa Uang Bulan Ini: Rp ${remainingMoney.toLocaleString('id-ID')}\n` +
+        `📅 Sisa Hari: ${remainingDays} hari lagi\n` +
+        `🛡️ *Budget Aman per Hari*: Rp ${safeDaily.toLocaleString('id-ID')}/hari`
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    // 4. Piutang (/piutang, !y piutang)
+    if (lower === '/piutang' || lower === '/utang' || lower === '!y piutang' || lower === '!y utang') {
+      const { data: debtTx } = await supabase.from('transactions').select('*').eq('category', 'DEBT').order('date', { ascending: false });
+      if (!debtTx || debtTx.length === 0) {
+        await sendTelegramMessage(chatId, '🎉 *Bersih!* Tidak ada catatan piutang / utang saat ini.');
+        return res.status(200).json({ ok: true });
+      }
+      let debtMsg = '*📋 DAFTAR CATATAN PIUTANG / UTANG*\n\n';
+      debtTx.slice(0, 10).forEach(t => {
+        const emoji = t.type === 'INCOME' ? '🟢 Lunas/Terima' : '🔴 Belum Lunas';
+        debtMsg += `• ${t.title}: Rp ${Number(t.amount).toLocaleString('id-ID')} (${emoji})\n`;
+      });
+      await sendTelegramMessage(chatId, debtMsg);
+      return res.status(200).json({ ok: true });
+    }
+
+    // 5. Undo (/undo, /batal, !y undo, !y batal)
+    if (lower === '/undo' || lower === '/batal' || lower === '!y undo' || lower === '!y batal') {
+      const { data: latest } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(1);
+      if (!latest || latest.length === 0) {
+        await sendTelegramMessage(chatId, '❌ Tidak ada transaksi untuk dibatalkan.');
+        return res.status(200).json({ ok: true });
+      }
+      const lastTx = latest[0];
+      await supabase.from('transactions').delete().eq('id', lastTx.id);
+      await sendTelegramMessage(chatId, `🗑️ Transaksi "${lastTx.title}" (Rp ${Number(lastTx.amount).toLocaleString('id-ID')}) berhasil dibatalkan!`);
+      return res.status(200).json({ ok: true });
+    }
+
+    // 6. Transfer (/tf, /transfer, !y tf)
+    if (lower.startsWith('/tf') || lower.startsWith('/transfer') || lower.startsWith('!y tf') || lower.startsWith('!y transfer') || lower.startsWith('pindah ')) {
+      const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+      const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+      if (!amtMatch) {
+        await sendTelegramMessage(chatId, '❌ Format transfer: /tf 500k bca ke gopay');
+        return res.status(200).json({ ok: true });
+      }
+      let amount = parseFloat(amtMatch[1].replace(',', '.'));
+      const unit = (amtMatch[2] || '').toLowerCase();
+      if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1000;
+      else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
+
+      const foundWallets = walletList.filter(w => lower.includes(w.toLowerCase()));
+      const fromW = foundWallets[0] || 'BCA';
+      const toW = foundWallets[1] || 'GOPAY';
+      const nowIso = new Date().toISOString();
+
+      const txOut = { id: 'tx_' + Date.now() + '_out', title: `Transfer ke ${toW}`, amount, type: 'EXPENSE', category: 'TRANSFER', wallet: fromW, date: nowIso };
+      const txIn = { id: 'tx_' + (Date.now() + 1) + '_in', title: `Transfer dari ${fromW}`, amount, type: 'INCOME', category: 'TRANSFER', wallet: toW, date: nowIso };
+
+      await supabase.from('transactions').insert([txOut, txIn]);
+
+      const { data: allData } = await supabase.from('transactions').select('*');
+      let totalInc = 0, totalExp = 0;
+      const balances = { BCA: 0, MANDIRI: 0, GOPAY: 0, OVO: 0, SHOPEEPAY: 0, DANA: 0, CASH: 0 };
+      (allData || []).forEach(t => {
+        const w = (t.wallet || 'CASH').toUpperCase();
+        const amtVal = Number(t.amount) || 0;
+        if (t.type === 'INCOME') { totalInc += amtVal; balances[w] = (balances[w] || 0) + amtVal; }
+        else { totalExp += amtVal; balances[w] = (balances[w] || 0) - amtVal; }
+      });
+
+      await sendTelegramMessage(chatId,
+        `🔄 *TRANSFER ANTAK DOMPET BERHASIL!* 🤖\n\n` +
+        `💰 Nominal: Rp ${amount.toLocaleString('id-ID')}\n` +
+        `📤 Dari: *${fromW}* (Sisa: Rp ${(balances[fromW] || 0).toLocaleString('id-ID')})\n` +
+        `📥 Ke: *${toW}* (Saldo Akhir: Rp ${(balances[toW] || 0).toLocaleString('id-ID')})\n` +
+        `💵 *Total Net Worth*: Rp ${(totalInc - totalExp).toLocaleString('id-ID')} (Utuh!)\n\n` +
+        `✅ Success`
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    // 7. Saldo awal (/saldo, !y saldo)
+    if (lower.startsWith('/saldo') || lower.startsWith('!y saldo') || lower.startsWith('/set') || lower.startsWith('!y set')) {
+      const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+      const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+      if (amtMatch) {
+        let newAmt = parseFloat(amtMatch[1].replace(',', '.'));
+        const unit = (amtMatch[2] || '').toLowerCase();
+        if (unit === 'rb' || unit === 'ribu' || unit === 'k') newAmt *= 1000;
+        else if (unit === 'jt' || unit === 'juta' || unit === 'm') newAmt *= 1000000;
+
+        const targetWallet = walletList.find(w => lower.includes(w.toLowerCase())) || 'CASH';
+        const seedTx = { id: 'tx_saldo_' + targetWallet.toLowerCase() + '_' + Date.now(), title: `Saldo Awal ${targetWallet}`, amount: newAmt, type: 'INCOME', category: 'SALARY', wallet: targetWallet, date: new Date().toISOString() };
+        await supabase.from('transactions').insert([seedTx]);
+
+        await sendTelegramMessage(chatId, `💳 *SALDO AWAL ${targetWallet} BERHASIL DISET!*\n\n💰 Nominal Saldo Awal: Rp ${newAmt.toLocaleString('id-ID')}\n✅ Success`);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // 8. Secret Reset (/reset, !y reset)
+    if (lower === '/reset' || lower === '!y reset' || lower === '!y reset confirm') {
       await supabase.from('transactions').delete().neq('id', '0');
       await sendTelegramMessage(chatId,
         `🧹 *RESET TOTAL INCOME & EXPENSE BERHASIL!* 🤖\n\n` +
         `✨ Total pemasukan & pengeluaran telah di-reset ke Rp 0.\n` +
-        `👉 *Langkah Selanjutnya*: Ketik _!y budget 10jt_ atau _!y saldo bca 5jt_ untuk mulai!\n\n` +
+        `👉 *Langkah Selanjutnya*: Ketik _/budget 10jt_ atau _/saldo bca 5jt_ untuk mulai!\n\n` +
         `✅ Clean Slate Ready!`
       );
       return res.status(200).json({ ok: true });
