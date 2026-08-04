@@ -464,13 +464,27 @@ if (require.main === module && !process.env.VERCEL) {
     const lower = text.toLowerCase().replace(/!y:\s*/i, '').trim();
     if (!lower) return null;
 
-    // 1. Order-Independent Amount Detection
+    // 1. Order-Independent Amount Detection (Indonesian Dot Separator Aware: 356.381 -> 356381)
     let amount = 0;
     let amountRawMatch = '';
-    const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|rbn|k|jt|juta|m|miliar|milyar|b)?/i);
+    const amtMatch = lower.match(/(\d+(?:[\.,]\d+)*)\s*(rb|ribu|rbn|k|jt|juta|m|miliar|milyar|b)?/i);
     if (amtMatch) {
       amountRawMatch = amtMatch[0];
-      amount = parseFloat(amtMatch[1].replace(',', '.'));
+      let numStr = amtMatch[1];
+
+      // Handle Indonesian dot thousand separators e.g. 356.381 or 1.500.000
+      if (numStr.includes('.') && numStr.includes(',')) {
+        numStr = numStr.replace(/\./g, '').replace(',', '.');
+      } else if (numStr.includes('.')) {
+        const parts = numStr.split('.');
+        if (parts.every((p, idx) => idx === 0 || p.length === 3)) {
+          numStr = numStr.replace(/\./g, '');
+        }
+      } else if (numStr.includes(',')) {
+        numStr = numStr.replace(',', '.');
+      }
+
+      amount = Math.round(parseFloat(numStr) || 0);
       const unit = (amtMatch[2] || '').toLowerCase();
       if (unit === 'rb' || unit === 'ribu' || unit === 'rbn' || unit === 'k') amount *= 1000;
       else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
@@ -489,7 +503,7 @@ if (require.main === module && !process.env.VERCEL) {
       }
     }
 
-    // 3. Smart Type Detection (Grammar Rules for "bayar": "bayar kevin" = EXPENSE vs "kevin bayar" = INCOME)
+    // 3. Smart Type Detection
     let type = 'EXPENSE';
 
     const isSubjectBayarIncome = (/\b[a-z]{3,}\s+bayar\b/i.test(lower) || /\b[a-z]{3,}\s+membayar\b/i.test(lower)) && !lower.startsWith('bayar');
@@ -510,14 +524,19 @@ if (require.main === module && !process.env.VERCEL) {
       }
     }
 
-    // 4. Order-Independent Category Detection (Preset or Dynamic)
+    // 4. Order-Independent Category Detection (GIFT/FAMILY Priority for Uang Jajan)
     let category = null;
-    for (const [cat, keywords] of Object.entries(categoryMap)) {
-      for (const kw of keywords) {
-        const catRegex = new RegExp(`\\b${kw}\\b`, 'i');
-        if (catRegex.test(lower)) { category = cat; break; }
+
+    if (lower.includes('uang jajan') || lower.includes('sangu')) {
+      category = 'FAMILY';
+    } else {
+      for (const [cat, keywords] of Object.entries(categoryMap)) {
+        for (const kw of keywords) {
+          const catRegex = new RegExp(`\\b${kw}\\b`, 'i');
+          if (catRegex.test(lower)) { category = cat; break; }
+        }
+        if (category) break;
       }
-      if (category) break;
     }
 
     // 5. Clean Title & Natural Human Context Polishing
