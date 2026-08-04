@@ -291,6 +291,20 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
+app.post('/api/reset-data', async (req, res) => {
+  try {
+    transactions = [];
+    if (supabaseConnected && supabase) {
+      try { await supabase.from('transactions').delete().neq('id', '0'); } catch (e) {}
+    }
+    saveDataLocal();
+    broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+    res.json({ success: true, message: 'All transactions reset successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/transactions', async (req, res) => {
   try {
     const id = req.query.id || req.body?.id;
@@ -726,6 +740,34 @@ if (require.main === module && !process.env.VERCEL) {
             `*!y bulan* → Rekap transaksi bulan ini\n` +
             `*!y cat* → Breakdown per kategori\n` +
             `*!y [dompet]* → Cek saldo spesifik (contoh: _!y bca_)`
+          });
+          return;
+        }
+
+        // !y reset confirm - Reset Semua Data (Mulai Dari 0)
+        if (lower === '!y reset confirm' || lower === '!y reset data') {
+          transactions = [];
+          if (supabaseConnected && supabase) {
+            try { await supabase.from('transactions').delete().neq('id', '0'); } catch (e) {}
+          }
+          saveDataLocal();
+          broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+
+          await waSocket.sendMessage(jid, { text:
+            `🧹 *SEMUA DATA DIBERSIHKAN! MULAI DARI 0!*\n\n` +
+            `✨ Seluruh transaksi uji coba berhasil dihapus.\n` +
+            `👉 *Langkah Selanjutnya*: Set saldo awal kamu sekarang!\n` +
+            `Contoh: _!y saldo bca 5jt_ atau _!y saldo gopay 350k_\n\n` +
+            `✅ Ready for daily use!`
+          });
+          return;
+        }
+
+        if (lower === '!y reset') {
+          await waSocket.sendMessage(jid, { text:
+            `⚠️ *PERINGATAN KONFIRMASI RESET DATA*\n\n` +
+            `Perintah ini akan menghapus SELURUH riwayat transaksi dan mulai dari 0!\n\n` +
+            `Ketik: *!y reset confirm* untuk melanjutkan.`
           });
           return;
         }
