@@ -1246,14 +1246,15 @@ if (require.main === module && !process.env.VERCEL) {
     }
 
   // ==========================================
-  // TELEGRAM BOT ENGINE (KAEL AI)
+  // TELEGRAM BOT ENGINE (KAEL AI - PRIMARY INTERFACE)
   // ==========================================
   function startTelegramBot() {
     const tgToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!tgToken) return;
 
     try {
-      const TelegramBot = require('node-telegram-bot-api');
+      const TgLib = require('node-telegram-bot-api');
+      const TelegramBot = typeof TgLib === 'function' ? TgLib : (TgLib.default || TgLib);
       const tgBot = new TelegramBot(tgToken, { polling: true });
       internalLog('✈️ TELEGRAM BOT CONNECTED (KAEL AI)');
 
@@ -1264,12 +1265,13 @@ if (require.main === module && !process.env.VERCEL) {
         const chatId = msg.chat.id;
         const lower = text.toLowerCase().trim();
 
+        // Help & Welcome
         if (lower === '/start' || lower === '/help' || lower === 'kael' || lower === '!y') {
           tgBot.sendMessage(chatId,
             `✨ *HALO BOSS! AKU KAEL - ASISTEN KEUANGAN PRIBADI KAMU!* 🤖💰\n\n` +
             `*Catat Bebas* ➔ Ketik biasa tanpa ribet, contoh:\n` +
             `• _bca 50k makan siang_\n` +
-            `• _dikirim mama 100k gopay_\n` +
+            `• _dapat uang jajan 356.381 di bca_\n` +
             `• _kevin bayar 300k_\n\n` +
             `⚡ *Perintah Cepat KAEL*:\n` +
             `• *!y edit [nominal]* ➔ Revisi transaksi terakhir\n` +
@@ -1277,12 +1279,191 @@ if (require.main === module && !process.env.VERCEL) {
             `• *!y report* ➔ Laporan rekap keuangan\n` +
             `• *!y piutang* ➔ Catatan utang & pinjaman\n` +
             `• *!y tf 500k bca ke gopay* ➔ Pindah saldo antar dompet\n` +
-            `• *!y saldo bca 5jt* ➔ Set saldo awal dompet`,
+            `• *!y saldo bca 5jt* ➔ Set saldo awal dompet\n` +
+            `• *!y reset* ➔ Reset total income & expense ke 0`,
             { parse_mode: 'Markdown' }
           );
           return;
         }
 
+        // Secret Reset
+        if (lower === '!y reset' || lower === '!y reset confirm') {
+          transactions = [];
+          if (supabaseConnected && supabase) {
+            try { await supabase.from('transactions').delete().neq('id', '0'); } catch (e) {}
+          }
+          saveDataLocal();
+          broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+          tgBot.sendMessage(chatId,
+            `🧹 *RESET TOTAL INCOME & EXPENSE BERHASIL!* 🤖\n\n` +
+            `✨ Total pemasukan & pengeluaran telah di-reset ke Rp 0.\n` +
+            `👉 *Langkah Selanjutnya*: Ketik _!y budget 10jt_ atau _!y saldo bca 5jt_ untuk mulai!\n\n` +
+            `✅ Clean Slate Ready!`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        // Budget Target
+        if (lower.startsWith('!y budget ') || lower.startsWith('!y target ')) {
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (amtMatch) {
+            let newTarget = parseFloat(amtMatch[1].replace(',', '.'));
+            const unit = (amtMatch[2] || '').toLowerCase();
+            if (unit === 'rb' || unit === 'ribu' || unit === 'k') newTarget *= 1000;
+            else if (unit === 'jt' || unit === 'juta' || unit === 'm') newTarget *= 1000000;
+
+            settings.targetIncome = newTarget;
+            saveDataLocal();
+            broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+
+            tgBot.sendMessage(chatId,
+              `🎯 *TARGET BUDGET BULANAN DISET BY KAEL!* 🤖\n\n` +
+              `💰 Nominal Target Income Bulanan: Rp ${newTarget.toLocaleString('id-ID')}\n` +
+              `🛡️ Limit Needs (50%): Rp ${(newTarget * 0.5).toLocaleString('id-ID')}\n` +
+              `🛍️ Limit Wants (30%): Rp ${(newTarget * 0.3).toLocaleString('id-ID')}\n` +
+              `💎 Limit Savings (20%): Rp ${(newTarget * 0.2).toLocaleString('id-ID')}\n\n` +
+              `✅ Ready to track!`,
+              { parse_mode: 'Markdown' }
+            );
+            return;
+          }
+        }
+
+        // Budget Sisa Calculator
+        if (lower === '!y budget' || lower === '!y sisa') {
+          const now = new Date();
+          const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+          const remainingDays = Math.max(1, lastDayOfMonth - now.getDate() + 1);
+          const monthTx = transactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          const inc = monthTx.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount), 0);
+          const exp = monthTx.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0);
+          const remainingMoney = inc - exp;
+          const safeDaily = Math.max(0, Math.floor(remainingMoney / remainingDays));
+
+          tgBot.sendMessage(chatId,
+            `*🧮 KALKULATOR BUDGET BULANAN BY KAEL* 🤖\n\n` +
+            `💰 Sisa Uang Bulan Ini: Rp ${remainingMoney.toLocaleString('id-ID')}\n` +
+            `📅 Sisa Hari: ${remainingDays} hari lagi\n` +
+            `🛡️ *Budget Aman per Hari*: Rp ${safeDaily.toLocaleString('id-ID')}/hari`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        // Report
+        if (lower === '!y report') {
+          const s = getSummary();
+          const now = new Date();
+          const monthTx = transactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          const inc = monthTx.filter(t => t.type === 'INCOME').reduce((st, t) => st + Number(t.amount), 0);
+          const exp = monthTx.filter(t => t.type === 'EXPENSE').reduce((st, t) => st + Number(t.amount), 0);
+
+          tgBot.sendMessage(chatId,
+            `*📊 LAPORAN KEUANGAN KAEL* 🤖\n\n` +
+            `💰 *Net Worth Total*: Rp ${Number(s.netWorth).toLocaleString('id-ID')}\n` +
+            `📈 Total Pemasukan Bulan Ini: Rp ${inc.toLocaleString('id-ID')}\n` +
+            `📉 Total Pengeluaran Bulan Ini: Rp ${exp.toLocaleString('id-ID')}\n` +
+            `❤️ Skor Kesehatan Keuangan: ${s.score}/100 (${s.healthBadge})`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        // Piutang
+        if (lower === '!y piutang' || lower === '!y utang') {
+          const debtTx = transactions.filter(t => t.category === 'DEBT');
+          if (debtTx.length === 0) {
+            tgBot.sendMessage(chatId, '🎉 *Bersih!* Tidak ada catatan piutang / utang saat ini.', { parse_mode: 'Markdown' });
+            return;
+          }
+          let debtMsg = '*📋 DAFTAR CATATAN PIUTANG / UTANG*\n\n';
+          debtTx.slice(0, 10).forEach(t => {
+            const emoji = t.type === 'INCOME' ? '🟢 Lunas/Terima' : '🔴 Belum Lunas';
+            debtMsg += `• ${t.title}: Rp ${Number(t.amount).toLocaleString('id-ID')} (${emoji})\n`;
+          });
+          tgBot.sendMessage(chatId, debtMsg, { parse_mode: 'Markdown' });
+          return;
+        }
+
+        // Undo
+        if (lower === '!y undo' || lower === '!y batal') {
+          if (transactions.length === 0) {
+            tgBot.sendMessage(chatId, '❌ Tidak ada transaksi untuk dibatalkan.');
+            return;
+          }
+          const lastTx = transactions[0];
+          await deleteTransaction(lastTx.id);
+          tgBot.sendMessage(chatId, `🗑️ Transaksi "${lastTx.title}" (Rp ${Number(lastTx.amount).toLocaleString('id-ID')}) berhasil dibatalkan!`);
+          return;
+        }
+
+        // Transfer !y tf
+        if (lower.startsWith('!y tf') || lower.startsWith('!y transfer') || lower.startsWith('pindah ')) {
+          const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (!amtMatch) {
+            tgBot.sendMessage(chatId, '❌ Format transfer: !y tf 500k bca ke gopay');
+            return;
+          }
+          let amount = parseFloat(amtMatch[1].replace(',', '.'));
+          const unit = (amtMatch[2] || '').toLowerCase();
+          if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1000;
+          else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
+
+          const foundWallets = walletList.filter(w => lower.includes(w.toLowerCase()));
+          const fromW = foundWallets[0] || 'BCA';
+          const toW = foundWallets[1] || 'GOPAY';
+          const nowIso = new Date().toISOString();
+
+          const txOut = { id: 'tx_' + Date.now() + '_out', title: `Transfer ke ${toW}`, amount, type: 'EXPENSE', category: 'TRANSFER', wallet: fromW, date: nowIso };
+          const txIn = { id: 'tx_' + (Date.now() + 1) + '_in', title: `Transfer dari ${fromW}`, amount, type: 'INCOME', category: 'TRANSFER', wallet: toW, date: nowIso };
+
+          await addTransaction(txOut);
+          await addTransaction(txIn);
+
+          const sTf = getSummary();
+          const fromBal = sTf.walletBalances[fromW] || 0;
+          const toBal = sTf.walletBalances[toW] || 0;
+
+          tgBot.sendMessage(chatId,
+            `🔄 *TRANSFER ANTAK DOMPET BERHASIL!* 🤖\n\n` +
+            `💰 Nominal: Rp ${amount.toLocaleString('id-ID')}\n` +
+            `📤 Dari: *${fromW}* (Sisa: Rp ${fromBal.toLocaleString('id-ID')})\n` +
+            `📥 Ke: *${toW}* (Saldo Akhir: Rp ${toBal.toLocaleString('id-ID')})\n` +
+            `💵 *Total Net Worth*: Rp ${sTf.netWorth.toLocaleString('id-ID')} (Utuh!)\n\n` +
+            `✅ Success`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        // Saldo initial !y saldo
+        if (lower.startsWith('!y saldo') || lower.startsWith('!y set')) {
+          const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (amtMatch) {
+            let newAmt = parseFloat(amtMatch[1].replace(',', '.'));
+            const unit = (amtMatch[2] || '').toLowerCase();
+            if (unit === 'rb' || unit === 'ribu' || unit === 'k') newAmt *= 1000;
+            else if (unit === 'jt' || unit === 'juta' || unit === 'm') newAmt *= 1000000;
+
+            const targetWallet = walletList.find(w => lower.includes(w.toLowerCase())) || 'CASH';
+            const seedTx = { id: 'tx_saldo_' + targetWallet.toLowerCase() + '_' + Date.now(), title: `Saldo Awal ${targetWallet}`, amount: newAmt, type: 'INCOME', category: 'SALARY', wallet: targetWallet, date: new Date().toISOString() };
+            await addTransaction(seedTx);
+
+            tgBot.sendMessage(chatId, `💳 *SALDO AWAL ${targetWallet} BERHASIL DISET!*\n\n💰 Nominal Saldo Awal: Rp ${newAmt.toLocaleString('id-ID')}\n✅ Success`, { parse_mode: 'Markdown' });
+            return;
+          }
+        }
+
+        // Record Natural Transaction
         const tx = parseTransactionFromText(text, Math.floor(Date.now() / 1000));
         if (tx && tx.amount > 0) {
           if (isDuplicateTransaction(tx)) {
@@ -1292,8 +1473,14 @@ if (require.main === module && !process.env.VERCEL) {
           await addTransaction(tx);
           const emoji = tx.type === 'INCOME' ? '📈' : '📉';
           const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
           const s = getSummary();
           const endingWalletBal = s.walletBalances[tx.wallet] || 0;
+          const netWorth = s.netWorth;
+
+          const commentText = tx.type === 'INCOME' 
+            ? `Mantap banget boss! Dompet ${tx.wallet} makin tebal! 🔥`
+            : `Siap boss! Pengeluaran dari ${tx.wallet} sudah KAEL catat rapi. 👌`;
 
           const sign = tx.type === 'INCOME' ? '+' : '-';
           const walletBalText = tx.type === 'INCOME'
@@ -1307,7 +1494,8 @@ if (require.main === module && !process.env.VERCEL) {
             `💳 Dompet: *${tx.wallet}* | 📂 Kategori: *${tx.category}*\n` +
             `🕒 Waktu: ${dateStr}\n\n` +
             `${walletBalText}\n` +
-            `💵 *Total Net Worth*: Rp ${s.netWorth.toLocaleString('id-ID')}\n\n` +
+            `💵 *Total Net Worth*: Rp ${netWorth.toLocaleString('id-ID')}\n\n` +
+            `✨ *Pesan KAEL*: ${commentText}\n` +
             `✅ Success`,
             { parse_mode: 'Markdown' }
           );
@@ -1321,8 +1509,7 @@ if (require.main === module && !process.env.VERCEL) {
   loadData().then(() => {
     server.listen(APP_PORT, () => {
       console.log(`\n🚀 WEALTH RADAR ID SERVER AT http://localhost:${APP_PORT}`);
-      console.log(`📱 Buka http://localhost:${APP_PORT} → klik SCAN WA QR untuk pairing WhatsApp\n`);
-      startWhatsAppBot().catch(e => console.warn('WA Bot notice:', e.message));
+      console.log(`✈️ TELEGRAM BOT KAEL ACTIVE WITH API TOKEN`);
       startTelegramBot();
     });
   });
