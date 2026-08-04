@@ -327,27 +327,37 @@ if (require.main === module && !process.env.VERCEL) {
   }
 
   // ==========================================
-  // PARSE NATURAL LANGUAGE (!y: text) WITH TIMESTAMP
+  // SMART AI PARSER (!y: text or natural text)
   // ==========================================
   function parseTransactionFromText(text, msgTimestamp) {
     const walletPatterns = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash'];
-    const incomeKeywords = ['dapat', 'terima', 'gaji', 'bonus', 'transfer masuk', 'freelance', 'salary'];
+    const incomeKeywords = [
+      'dapat', 'terima', 'gaji', 'bonus', 'transfer masuk', 'freelance', 'salary',
+      'masuk', 'cair', 'diberi', 'jual', 'laku', 'hasil', 'komisi', 'refund',
+      'cashback', 'kembalian', 'untung', 'omset', 'inflow', 'pemasukan'
+    ];
+
     const categoryMap = {
-      FOOD: ['makan', 'kopi', 'ayam', 'nasi', 'snack', 'jajan', 'warteg', 'bakso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto'],
-      TRANSPORT: ['grab', 'gojek', 'bensin', 'pertamax', 'parkir', 'tol', 'ojol', 'taxi', 'bus', 'kereta'],
-      BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos'],
-      SHOPPING: ['beli', 'baju', 'celana', 'sepatu', 'tas', 'gadget', 'hp', 'laptop', 'shopee', 'tokped'],
-      INVESTMENT: ['invest', 'saham', 'reksadana', 'crypto', 'tabung', 'deposito', 'emas', 'nabung']
+      FOOD: ['makan', 'minum', 'kopi', 'ayam', 'nasi', 'snack', 'jajan', 'warteg', 'bakso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto', 'resto', 'kafe', 'cafe', 'es', 'kuliner'],
+      TRANSPORT: ['grab', 'gojek', 'bensin', 'pertamax', 'parkir', 'tol', 'ojol', 'taxi', 'bus', 'kereta', 'mrt', 'service', 'oli', 'ban', 'tambal', 'angkot'],
+      BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos', 'bpjs', 'pajak', 'asuransi', 'langganan', 'tagihan'],
+      SHOPPING: ['beli', 'baju', 'celana', 'sepatu', 'tas', 'gadget', 'hp', 'laptop', 'shopee', 'tokped', 'tokopedia', 'lazada', 'blibli', 'buku', 'belanja', 'supermarket'],
+      INVESTMENT: ['invest', 'saham', 'reksadana', 'crypto', 'tabung', 'deposito', 'emas', 'nabung', 'bibit', 'pintu', 'sekuritas'],
+      SALARY: ['gaji', 'salary', 'freelance', 'bonus', 'thr', 'proyek', 'gajian'],
+      ENTERTAINMENT: ['nonton', 'bioskop', 'game', 'steam', 'netflix', 'spotify', 'youtube', 'konser', 'tiket', 'rekreasi', 'liburan'],
+      HEALTH: ['obat', 'dokter', 'apotek', 'rs', 'rumah sakit', 'vitamin', 'gym', 'sehat', 'fitnes']
     };
 
     const lower = text.toLowerCase().replace(/!y:\s*/i, '').trim();
     if (!lower) return null;
 
+    // 1. Detect Wallet
     let wallet = 'CASH';
     for (const w of walletPatterns) {
       if (lower.includes(w)) { wallet = w.toUpperCase(); break; }
     }
 
+    // 2. Detect Amount
     let amount = 0;
     const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
     if (amtMatch) {
@@ -357,24 +367,39 @@ if (require.main === module && !process.env.VERCEL) {
       else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
     }
 
+    // 3. Detect Type (INCOME vs EXPENSE)
     let type = 'EXPENSE';
     for (const kw of incomeKeywords) {
       if (lower.includes(kw)) { type = 'INCOME'; break; }
     }
 
-    let category = type === 'INCOME' ? 'SALARY' : 'FOOD';
+    // 4. Detect Category (Preset vs Dynamic Custom Category)
+    let category = null;
     for (const [cat, keywords] of Object.entries(categoryMap)) {
       for (const kw of keywords) {
         if (lower.includes(kw)) { category = cat; break; }
       }
+      if (category) break;
     }
 
-    let title = lower
+    // Clean Title & Extract Dynamic Category if no preset category matched
+    let titleClean = lower
       .replace(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/gi, '')
       .replace(new RegExp(walletPatterns.join('|'), 'gi'), '')
+      .replace(new RegExp(incomeKeywords.join('|'), 'gi'), '')
       .replace(/!y:?\s*/gi, '')
       .trim();
-    title = title.charAt(0).toUpperCase() + title.slice(1);
+
+    // If still no preset category, dynamically generate Category from first word!
+    if (!category) {
+      const words = titleClean.split(/\s+/).filter(w => w.length > 2);
+      if (words.length > 0) {
+        category = words[0].toUpperCase().replace(/[^A-Z]/g, '');
+      }
+      if (!category || category.length < 2) category = type === 'INCOME' ? 'SALARY' : 'MISC';
+    }
+
+    let title = titleClean.charAt(0).toUpperCase() + titleClean.slice(1);
     if (!title) title = type === 'INCOME' ? 'Pemasukan' : 'Pengeluaran';
 
     const txDate = msgTimestamp ? new Date(Number(msgTimestamp) * 1000).toISOString() : new Date().toISOString();
