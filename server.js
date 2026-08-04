@@ -383,7 +383,12 @@ if (require.main === module && !process.env.VERCEL) {
     const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
     const qrcodeTerm = require('qrcode-terminal');
 
+    let isReconnecting = false;
+
     async function startWhatsAppBot() {
+      if (isReconnecting) return;
+      isReconnecting = true;
+
       const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
       const waSocket = makeWASocket({
         auth: authState,
@@ -391,8 +396,30 @@ if (require.main === module && !process.env.VERCEL) {
         browser: Browsers.ubuntu('Desktop'),
         syncFullHistory: false,
         markOnlineOnConnect: true,
-        generateHighQualityLinkPreview: true
+        generateHighQualityLinkPreview: true,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000
       });
+
+      // Mac Sleep & Network Wakeup Watchdog
+      let lastPingTime = Date.now();
+      if (global._waSleepInterval) clearInterval(global._waSleepInterval);
+      global._waSleepInterval = setInterval(() => {
+        const now = Date.now();
+        const gap = now - lastPingTime;
+        lastPingTime = now;
+
+        // Gap > 10 seconds means Mac was in SLEEP mode!
+        if (gap > 10000) {
+          console.log(`\n🌙 Mac terdeteksi BANGUN DARI SLEEP (${(gap / 1000).toFixed(1)}s). Melakukan Auto-Reconnect WA Bot...`);
+          currentWaStatus = 'DISCONNECTED';
+          broadcast('WA_STATUS', { status: 'DISCONNECTED' });
+          isReconnecting = false;
+          try { waSocket.end(new Error('Mac Wakeup')); } catch (e) {}
+          setTimeout(() => startWhatsAppBot(), 2000);
+        }
+      }, 4000);
 
       waSocket.ev.on('creds.update', saveCreds);
 
@@ -412,6 +439,7 @@ if (require.main === module && !process.env.VERCEL) {
         }
 
         if (connection === 'open') {
+          isReconnecting = false;
           currentQrCode = null;
           currentWaStatus = 'CONNECTED';
           console.log('\n==================================================');
@@ -421,6 +449,7 @@ if (require.main === module && !process.env.VERCEL) {
         }
 
         if (connection === 'close') {
+          isReconnecting = false;
           currentQrCode = null;
           currentWaStatus = 'DISCONNECTED';
           broadcast('WA_STATUS', { status: 'DISCONNECTED' });
