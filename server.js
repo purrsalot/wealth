@@ -710,21 +710,24 @@ if (require.main === module && !process.env.VERCEL) {
 
         const jid = msg.key.remoteJid;
         const lower = text.toLowerCase().trim();
+        if (!lower) return;
 
-        // Check if message starts with !y OR contains a natural transaction pattern (e.g. bca 50k makan, 100rb gaji)
-        const hasNominalPattern = /(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)\b/i.test(lower) || /\b\d{4,9}\b/.test(lower);
-        const hasWalletOrKeyword = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash', 'makan', 'bensin', 'gaji', 'dapat', 'bayar', 'beli', 'kopi', 'warteg', 'pulsa', 'wifi', 'listrik'].some(w => lower.includes(w));
-        const isTransactionFormat = lower.startsWith('!y') || (hasNominalPattern && hasWalletOrKeyword);
+        // Extract clean numbers & user IDs
+        const rawOwnerJid = waSocket.user?.id || '';
+        const cleanOwner = rawOwnerJid.replace(/@.*$/, '').split(':')[0];
+        const cleanSender = (msg.key.participant || jid || '').replace(/@.*$/, '').split(':')[0];
 
-        if (!isTransactionFormat) return;
+        const isOwner = msg.key.fromMe || (cleanOwner && (cleanSender === cleanOwner || jid.includes(cleanOwner)));
 
-        // Owner Security Check: Only allow commands from owner's linked number / self
-        const ownerJid = waSocket.user?.id ? waSocket.user.id.split(':')[0].split('@')[0] : '';
-        const senderJid = (msg.key.participant || msg.key.remoteJid || '').split(':')[0].split('@')[0];
-        const isOwner = msg.key.fromMe || (ownerJid && (senderJid === ownerJid || jid.startsWith(ownerJid)));
+        // Log all incoming messages for transparency in pm2 logs
+        if (lower.startsWith('!y') || /(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i.test(lower)) {
+          internalLog(`📩 WA Message Received: "${text}" (From: ${cleanSender}, Owner: ${isOwner ? 'YES' : 'NO'})`);
+        }
 
         if (!isOwner) {
-          internalLog(`🛡️ Pesan "${text}" DIABAIKAN karena dikirim dari nomor lain (${senderJid})`);
+          if (lower.startsWith('!y')) {
+            internalLog(`🛡️ Pesan "${text}" DIABAIKAN karena dikirim dari nomor lain (${cleanSender})`);
+          }
           return;
         }
 
