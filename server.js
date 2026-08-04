@@ -378,11 +378,7 @@ if (require.main === module && !process.env.VERCEL) {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log('\n==================================================');
-          console.log('📱 NEW WHATSAPP QR CODE GENERATED! SCAN BELOW:');
-          console.log('==================================================\n');
-          qrcodeTerm.generate(qr, { small: true });
-          console.log('\n📱 Buka juga http://localhost:3000 -> klik SCAN WA QR\n');
+          console.log('📱 QR Code WhatsApp dibuat! Silakan scan dari Web Dashboard di http://localhost:3000');
 
           currentWaStatus = 'SCAN_QR_REQUIRED';
           broadcast('WA_STATUS', { status: 'SCAN_QR_REQUIRED', qr: qr });
