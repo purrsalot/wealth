@@ -769,8 +769,42 @@ if (require.main === module && !process.env.VERCEL) {
           return;
         }
 
+        // Super Leader Lock Enforcer (Locks KAEL strictly to the chat room where !y superleaderhere was sent)
+        if (settings.superLeaderJid && jid !== settings.superLeaderJid && lower !== '!y superleaderhere' && lower !== '!y unlockall') {
+          internalLog(`🔒 Pesan "${text}" DIABAIKAN karena KAEL dikunci khusus untuk Super Leader Chat`);
+          return;
+        }
+
         lastUserJid = jid;
         internalLog(`📩 Pesan WA diterima dari Owner (${cleanSender}): "${text}"`);
+
+        // !y superleaderhere - Lock KAEL strictly to this room chat
+        if (lower === '!y superleaderhere') {
+          settings.superLeaderJid = jid;
+          saveDataLocal();
+          broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+
+          await waSocket.sendMessage(jid, { text:
+            `🔒 *SUPER LEADER LOCK AKTIF!* 🤖\n\n` +
+            `🎯 KAEL sekarang HANYA mendengarkan & merespons pesan dari room chat ini (*${cleanSender}*).\n` +
+            `🚫 Seluruh chat dari room atau kontak lain akan DIABAIKAN 100%!\n\n` +
+            `💡 _Ketik *!y unlockall* jika ingin membuka kembali akses ke room chat lain._`
+          });
+          return;
+        }
+
+        // !y unlockall - Unlock bot chat room restriction
+        if (lower === '!y unlockall') {
+          settings.superLeaderJid = null;
+          saveDataLocal();
+          broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+
+          await waSocket.sendMessage(jid, { text:
+            `🔓 *SUPER LEADER LOCK DIBUKA!* 🤖\n\n` +
+            `✨ KAEL kembali mendengarkan pesan dari seluruh room chat owner.`
+          });
+          return;
+        }
 
         // !y help / kael
         if (lower === '!y help' || lower === '!y' || lower === 'kael' || lower === 'halo kael') {
