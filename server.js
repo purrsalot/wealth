@@ -334,10 +334,14 @@ if (require.main === module && !process.env.VERCEL) {
     const incomeKeywords = [
       'dapat', 'terima', 'gaji', 'bonus', 'transfer masuk', 'freelance', 'salary',
       'masuk', 'cair', 'diberi', 'jual', 'laku', 'hasil', 'komisi', 'refund',
-      'cashback', 'kembalian', 'untung', 'omset', 'inflow', 'pemasukan'
+      'cashback', 'kembalian', 'untung', 'omset', 'inflow', 'pemasukan',
+      'dikirim', 'dikirimin', 'kiriman', 'transferan', 'dari', 'pemberian',
+      'dikasih', 'amplop', 'sangu', 'pesangon', 'hibah', 'titipan'
     ];
 
     const categoryMap = {
+      FAMILY: ['mama', 'papa', 'ortu', 'orang tua', 'kakak', 'kaka', 'adik', 'anak', 'keluarga', 'family', 'sangu'],
+      GIFT: ['dikirim', 'dikirimin', 'kiriman', 'dikasih', 'pemberian', 'amplop', 'kado', 'hadiah', 'hibah'],
       FOOD: ['makan', 'minum', 'kopi', 'ayam', 'nasi', 'snack', 'jajan', 'warteg', 'bakso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto', 'resto', 'kafe', 'cafe', 'es', 'kuliner'],
       TRANSPORT: ['grab', 'gojek', 'bensin', 'pertamax', 'parkir', 'tol', 'ojol', 'taxi', 'bus', 'kereta', 'mrt', 'service', 'oli', 'ban', 'tambal', 'angkot'],
       BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos', 'bpjs', 'pajak', 'asuransi', 'langganan', 'tagihan'],
