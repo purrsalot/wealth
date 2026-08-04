@@ -828,8 +828,8 @@ if (require.main === module && !process.env.VERCEL) {
           return;
         }
 
-        // !y reset confirm - Reset Semua Data (Mulai Dari 0)
-        if (lower === '!y reset confirm' || lower === '!y reset data') {
+        // Secret Command: !y reset - Reset Total Income & Expense (Mulai dari 0)
+        if (lower === '!y reset' || lower === '!y reset confirm' || lower === '!y reset data') {
           transactions = [];
           if (supabaseConnected && supabase) {
             try { await supabase.from('transactions').delete().neq('id', '0'); } catch (e) {}
@@ -838,22 +838,37 @@ if (require.main === module && !process.env.VERCEL) {
           broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
 
           await waSocket.sendMessage(jid, { text:
-            `🧹 *SEMUA DATA DIBERSIHKAN! MULAI DARI 0!*\n\n` +
-            `✨ Seluruh transaksi uji coba berhasil dihapus.\n` +
-            `👉 *Langkah Selanjutnya*: Set saldo awal kamu sekarang!\n` +
-            `Contoh: _!y saldo bca 5jt_ atau _!y saldo gopay 350k_\n\n` +
-            `✅ Ready for daily use!`
+            `🧹 *RESET TOTAL INCOME & EXPENSE BERHASIL!* 🤖\n\n` +
+            `✨ Total pemasukan & pengeluaran telah di-reset ke Rp 0.\n` +
+            `👉 *Langkah Selanjutnya*: Ketik _!y budget 10jt_ atau _!y saldo bca 5jt_ untuk mulai!\n\n` +
+            `✅ Clean Slate Ready!`
           });
           return;
         }
 
-        if (lower === '!y reset') {
-          await waSocket.sendMessage(jid, { text:
-            `⚠️ *PERINGATAN KONFIRMASI RESET DATA*\n\n` +
-            `Perintah ini akan menghapus SELURUH riwayat transaksi dan mulai dari 0!\n\n` +
-            `Ketik: *!y reset confirm* untuk melanjutkan.`
-          });
-          return;
+        // Secret Command: !y budget [nominal] - Set Nominal Budget Target Awal Bulanan
+        if (lower.startsWith('!y budget ') || lower.startsWith('!y target ')) {
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (amtMatch) {
+            let newTarget = parseFloat(amtMatch[1].replace(',', '.'));
+            const unit = (amtMatch[2] || '').toLowerCase();
+            if (unit === 'rb' || unit === 'ribu' || unit === 'k') newTarget *= 1000;
+            else if (unit === 'jt' || unit === 'juta' || unit === 'm') newTarget *= 1000000;
+
+            settings.targetIncome = newTarget;
+            saveDataLocal();
+            broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+
+            await waSocket.sendMessage(jid, { text:
+              `🎯 *TARGET BUDGET BULANAN DISET BY KAEL!* 🤖\n\n` +
+              `💰 Nominal Target Income Bulanan: Rp ${newTarget.toLocaleString('id-ID')}\n` +
+              `🛡️ Limit Needs (50%): Rp ${(newTarget * 0.5).toLocaleString('id-ID')}\n` +
+              `🛍️ Limit Wants (30%): Rp ${(newTarget * 0.3).toLocaleString('id-ID')}\n` +
+              `💎 Limit Savings (20%): Rp ${(newTarget * 0.2).toLocaleString('id-ID')}\n\n` +
+              `✅ Ready to track!`
+            });
+            return;
+          }
         }
 
         // !y status
