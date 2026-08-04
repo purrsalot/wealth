@@ -376,12 +376,9 @@ if (require.main === module && !process.env.VERCEL) {
       const waSocket = makeWASocket({
         auth: authState,
         printQRInTerminal: false,
-        browser: Browsers.macOS('Desktop'),
+        browser: ['WealthRadarID', 'Chrome', '121.0.0.0'],
         syncFullHistory: false,
-        markOnlineOnConnect: true,
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 25000
+        markOnlineOnConnect: true
       });
 
       waSocket.ev.on('creds.update', saveCreds);
@@ -390,7 +387,11 @@ if (require.main === module && !process.env.VERCEL) {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log('📱 QR Code WhatsApp dibuat! Silakan scan dari Web Dashboard di http://localhost:3000');
+          console.log('\n==================================================');
+          console.log('📱 SCAN KODE QR WHATSAPP DI BAWAH INI (DARI TERMINAL):');
+          console.log('==================================================\n');
+          qrcodeTerm.generate(qr, { small: true });
+          console.log('\n📱 Buka WhatsApp di HP -> Perangkat Tertaut -> Scan QR\n');
 
           currentQrCode = qr;
           currentWaStatus = 'SCAN_QR_REQUIRED';
@@ -400,7 +401,9 @@ if (require.main === module && !process.env.VERCEL) {
         if (connection === 'open') {
           currentQrCode = null;
           currentWaStatus = 'CONNECTED';
-          console.log('✅ WHATSAPP BOT CONNECTED & READY!');
+          console.log('\n==================================================');
+          console.log('✅ WHATSAPP BOT CONNECTED & SESI TERSEDIA PERMANEN!');
+          console.log('==================================================\n');
           broadcast('WA_STATUS', { status: 'CONNECTED' });
         }
 
@@ -412,10 +415,10 @@ if (require.main === module && !process.env.VERCEL) {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
           const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
-          console.log(`⚠️ WA Disconnected (Status Code: ${statusCode || 'Unknown'}). Reconnecting...`);
+          console.log(`⚠️ WA Disconnected (Code: ${statusCode || 'Unknown'}). Reconnecting in 3s...`);
 
-          if (isLoggedOut || statusCode === 408 || statusCode === 515) {
-            console.log('🔄 Session reset required. Clearing wa_auth_info for fresh QR...');
+          if (isLoggedOut) {
+            console.log('🚪 Sesi Logged Out. Menghapus folder auth...');
             try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
           }
 
