@@ -1245,13 +1245,87 @@ if (require.main === module && !process.env.VERCEL) {
       });
     }
 
-    loadData().then(() => {
-      server.listen(APP_PORT, () => {
-        console.log(`\n🚀 WEALTH RADAR ID SERVER AT http://localhost:${APP_PORT}`);
-        console.log(`📱 Buka http://localhost:${APP_PORT} → klik SCAN WA QR untuk pairing WhatsApp\n`);
-        startWhatsAppBot().catch(e => console.warn('WA Bot notice:', e.message));
+  // ==========================================
+  // TELEGRAM BOT ENGINE (KAEL AI)
+  // ==========================================
+  function startTelegramBot() {
+    const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!tgToken) return;
+
+    try {
+      const TelegramBot = require('node-telegram-bot-api');
+      const tgBot = new TelegramBot(tgToken, { polling: true });
+      internalLog('✈️ TELEGRAM BOT CONNECTED (KAEL AI)');
+
+      tgBot.on('message', async (msg) => {
+        const text = msg.text || msg.caption || '';
+        if (!text) return;
+
+        const chatId = msg.chat.id;
+        const lower = text.toLowerCase().trim();
+
+        if (lower === '/start' || lower === '/help' || lower === 'kael' || lower === '!y') {
+          tgBot.sendMessage(chatId,
+            `✨ *HALO BOSS! AKU KAEL - ASISTEN KEUANGAN PRIBADI KAMU!* 🤖💰\n\n` +
+            `*Catat Bebas* ➔ Ketik biasa tanpa ribet, contoh:\n` +
+            `• _bca 50k makan siang_\n` +
+            `• _dikirim mama 100k gopay_\n` +
+            `• _kevin bayar 300k_\n\n` +
+            `⚡ *Perintah Cepat KAEL*:\n` +
+            `• *!y edit [nominal]* ➔ Revisi transaksi terakhir\n` +
+            `• *!y sisa / !y budget* ➔ Hitung budget aman harian\n` +
+            `• *!y report* ➔ Laporan rekap keuangan\n` +
+            `• *!y piutang* ➔ Catatan utang & pinjaman\n` +
+            `• *!y tf 500k bca ke gopay* ➔ Pindah saldo antar dompet\n` +
+            `• *!y saldo bca 5jt* ➔ Set saldo awal dompet`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        const tx = parseTransactionFromText(text, Math.floor(Date.now() / 1000));
+        if (tx && tx.amount > 0) {
+          if (isDuplicateTransaction(tx)) {
+            tgBot.sendMessage(chatId, `⏭️ Transaksi "${tx.title}" (Rp ${Number(tx.amount).toLocaleString('id-ID')}) sudah pernah dicatat sebelumnya.`);
+            return;
+          }
+          await addTransaction(tx);
+          const emoji = tx.type === 'INCOME' ? '📈' : '📉';
+          const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          const s = getSummary();
+          const endingWalletBal = s.walletBalances[tx.wallet] || 0;
+
+          const sign = tx.type === 'INCOME' ? '+' : '-';
+          const walletBalText = tx.type === 'INCOME'
+            ? `📊 Saldo Akhir *${tx.wallet}*: Rp ${endingWalletBal.toLocaleString('id-ID')} (📈 +Rp ${Number(tx.amount).toLocaleString('id-ID')})`
+            : `📊 Sisa Saldo *${tx.wallet}*: Rp ${endingWalletBal.toLocaleString('id-ID')} (📉 -Rp ${Number(tx.amount).toLocaleString('id-ID')})`;
+
+          tgBot.sendMessage(chatId,
+            `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT BY KAEL!* 🤖\n\n` +
+            `📝 ${tx.title}\n` +
+            `💰 Nominal: ${sign}Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
+            `💳 Dompet: *${tx.wallet}* | 📂 Kategori: *${tx.category}*\n` +
+            `🕒 Waktu: ${dateStr}\n\n` +
+            `${walletBalText}\n` +
+            `💵 *Total Net Worth*: Rp ${s.netWorth.toLocaleString('id-ID')}\n\n` +
+            `✅ Success`,
+            { parse_mode: 'Markdown' }
+          );
+        }
       });
+    } catch (e) {
+      console.warn('Telegram bot init error:', e.message);
+    }
+  }
+
+  loadData().then(() => {
+    server.listen(APP_PORT, () => {
+      console.log(`\n🚀 WEALTH RADAR ID SERVER AT http://localhost:${APP_PORT}`);
+      console.log(`📱 Buka http://localhost:${APP_PORT} → klik SCAN WA QR untuk pairing WhatsApp\n`);
+      startWhatsAppBot().catch(e => console.warn('WA Bot notice:', e.message));
+      startTelegramBot();
     });
+  });
   } catch (e) {
     loadData().then(() => {
       server.listen(APP_PORT, () => {
