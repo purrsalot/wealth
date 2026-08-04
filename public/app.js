@@ -306,12 +306,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function safeFormatDate(dateVal) {
+    try {
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return 'Baru saja';
+      return d.toLocaleDateString('id-ID', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) {
+      return 'Baru saja';
+    }
+  }
+
   function renderTransactionFeed() {
     const searchVal = searchInput.value.toLowerCase().trim();
     let filtered = (state.transactions || []).filter(t => {
       const matchCat = currentCategoryFilter === 'ALL' || t.category === currentCategoryFilter;
       const matchWallet = currentWalletFilter === 'ALL' || (t.wallet || 'CASH').toUpperCase() === currentWalletFilter;
-      const matchSearch = !searchVal || t.title.toLowerCase().includes(searchVal) || (t.wallet || '').toLowerCase().includes(searchVal);
+      const matchSearch = !searchVal || (t.title || '').toLowerCase().includes(searchVal) || (t.wallet || '').toLowerCase().includes(searchVal);
       return matchCat && matchWallet && matchSearch;
     });
 
@@ -340,9 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
       item.className = 'tx-item';
       const isIncome = tx.type === 'INCOME';
       const iconName = isIncome ? 'arrow-down-left' : 'arrow-up-right';
-      const dateFormatted = new Date(tx.date).toLocaleDateString('id-ID', {
-        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-      });
+      const dateFormatted = safeFormatDate(tx.date);
 
       const wName = (tx.wallet || 'CASH').toUpperCase();
       const ws = walletStyles[wName] || { bg: 'rgba(148, 163, 184, 0.15)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.4)' };
@@ -353,10 +373,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <i data-feather="${iconName}"></i>
           </div>
           <div class="tx-info">
-            <span class="tx-title">${tx.title}</span>
+            <span class="tx-title">${escapeHtml(tx.title)}</span>
             <div class="tx-meta">
               <span>${dateFormatted}</span>
-              <span class="cat-badge">${tx.category}</span>
+              <span class="cat-badge">${escapeHtml(tx.category)}</span>
               <span class="cat-badge" style="background: ${ws.bg}; color: ${ws.color}; border: 1px solid ${ws.border}; font-weight: 800;">${wName}</span>
             </div>
           </div>
