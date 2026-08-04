@@ -441,6 +441,30 @@ if (require.main === module && !process.env.VERCEL) {
         }
       });
 
+      let lastUserJid = null;
+
+      // Handle process shutdown (pm2 stop / exit)
+      const handleShutdown = async (signal) => {
+        console.log(`\n🛑 Server received ${signal}, sending WhatsApp shutdown alert...`);
+        if (waSocket && lastUserJid) {
+          try {
+            const nowStr = new Date().toLocaleString('id-ID');
+            await waSocket.sendMessage(lastUserJid, { text:
+              `⚠️ *PERINGATAN: SERVER PM2 DIHENTIKAN!*\n\n` +
+              `🕒 Waktu: ${nowStr}\n` +
+              `🛑 Status: OFFLINE (${signal})\n` +
+              `💡 _Nyalakan kembali dengan: pm2 restart wealth-bot_`
+            });
+          } catch (e) {
+            console.warn('Failed to send shutdown WA alert:', e.message);
+          }
+        }
+        process.exit(0);
+      };
+
+      process.once('SIGINT', () => handleShutdown('SIGINT'));
+      process.once('SIGTERM', () => handleShutdown('SIGTERM'));
+
       // ==========================================
       // HANDLE INCOMING WA MESSAGES
       // ==========================================
@@ -458,6 +482,7 @@ if (require.main === module && !process.env.VERCEL) {
         // Only process !y commands
         if (!lower.startsWith('!y')) return;
 
+        lastUserJid = jid;
         console.log(`📩 WA Message: "${text}"`);
 
         // !y help
@@ -465,12 +490,38 @@ if (require.main === module && !process.env.VERCEL) {
           await waSocket.sendMessage(jid, { text:
             `*📊 WEALTH RADAR // ID - COMMAND LIST*\n\n` +
             `*!y: [dompet] [nominal] [keterangan]*\n→ Catat transaksi\n→ Contoh: !y: bca 50k makan siang\n\n` +
+            `*!y status* → Cek kesehatan PM2 server & database\n` +
             `*!y sync* → Sinkronisasi pesan pending (auto-fit tanggal & jam)\n` +
             `*!y total* → Cek total saldo\n` +
             `*!y undo* → Hapus transaksi terakhir\n` +
             `*!y bulan* → Rekap bulan ini\n` +
             `*!y cat* → Breakdown per kategori\n` +
             `*!y [nama dompet]* → Cek saldo dompet\n→ Contoh: !y bca, !y gopay`
+          });
+          return;
+        }
+
+        // !y status
+        if (lower === '!y status') {
+          const uptimeSec = Math.floor(process.uptime());
+          const hrs = Math.floor(uptimeSec / 3600);
+          const mins = Math.floor((uptimeSec % 3600) / 60);
+          const secs = uptimeSec % 60;
+          const uptimeStr = `${hrs > 0 ? hrs + 'j ' : ''}${mins}m ${secs}d`;
+
+          const memMb = (process.memoryUsage().rss / (1024 * 1024)).toFixed(1);
+          const dbStatus = supabaseConnected ? '🟢 Connected (Supabase Cloud)' : '🟡 Local Storage Mode';
+          const walletList = (settings.wallets || ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH']).join(', ');
+
+          await waSocket.sendMessage(jid, { text:
+            `🤖 *WEALTH RADAR // ID - BOT SYSTEM STATUS*\n\n` +
+            `🟢 *PM2 Status*: ONLINE (Active Background Daemon)\n` +
+            `⏱️ *Uptime Server*: ${uptimeStr}\n` +
+            `💻 *Penggunaan RAM*: ${memMb} MB\n` +
+            `⚡ *Database*: ${dbStatus}\n` +
+            `💳 *Dompet Aktif*: ${walletList}\n` +
+            `📊 *Total Transaksi*: ${transactions.length} item\n\n` +
+            `_Ketik *!y help* untuk melihat daftar perintah._`
           });
           return;
         }
