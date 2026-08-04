@@ -89,14 +89,24 @@ async function loadData() {
       if (!error && data) {
         const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
         transactions = data.map(t => {
-          if (!t.wallet || t.wallet === 'CASH') {
-            const titleLower = (t.title || '').toLowerCase();
-            const catLower = (t.category || '').toLowerCase();
-            const found = walletList.find(w => titleLower.includes(w.toLowerCase()) || catLower.includes(w.toLowerCase()));
-            if (found) t.wallet = found;
-            else if (!t.wallet) t.wallet = 'CASH';
+          let wallet = t.wallet;
+          let title = t.title || '';
+
+          // 1. Extract wallet from tagged title if present e.g. "[GOPAY] Kopi"
+          const tagMatch = title.match(/^\[([A-Z]+)\]\s*(.*)$/i);
+          if (tagMatch) {
+            wallet = tagMatch[1].toUpperCase();
+            title = tagMatch[2];
           }
-          return t;
+
+          // 2. Infer wallet from title or category if missing or defaulted to CASH
+          if (!wallet || wallet === 'CASH') {
+            const found = walletList.find(w => title.toLowerCase().includes(w.toLowerCase()) || (t.category || '').toLowerCase().includes(w.toLowerCase()));
+            if (found) wallet = found;
+            else if (!wallet) wallet = 'CASH';
+          }
+
+          return { ...t, title, wallet: (wallet || 'CASH').toUpperCase() };
         });
         internalLog(`📦 Memuat ${transactions.length} transaksi dari Supabase Cloud DB`);
         return;
@@ -127,14 +137,15 @@ async function addTransaction(tx) {
   if (!tx.wallet) tx.wallet = 'CASH';
   transactions.unshift(tx);
   saveDataLocal();
-  internalLog(`💾 Menyimpan transaksi baru: "${tx.title}" (Rp ${Number(tx.amount).toLocaleString('id-ID')})`);
+  internalLog(`💾 Menyimpan transaksi baru: "${tx.title}" [${tx.wallet}] (Rp ${Number(tx.amount).toLocaleString('id-ID')})`);
 
   if (supabaseConnected && supabase) {
     try {
       const { error } = await supabase.from('transactions').insert([tx]);
       if (error && error.message.includes('wallet')) {
-        const { id, title, amount, type, category, date } = tx;
-        await supabase.from('transactions').insert([{ id, title, amount, type, category, date }]);
+        const { id, title, amount, type, category, date, wallet } = tx;
+        const taggedTitle = `[${wallet}] ${title}`;
+        await supabase.from('transactions').insert([{ id, title: taggedTitle, amount, type, category, date }]);
       }
     } catch (e) {
       console.error('Supabase Insert Error:', e);

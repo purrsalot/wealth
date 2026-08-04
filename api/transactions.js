@@ -175,9 +175,10 @@ module.exports = async (req, res) => {
       // Insert to Supabase
       const { error } = await supabase.from('transactions').insert([tx]);
       if (error) {
-        // Retry without wallet column if it doesn't exist
-        const { id, title, amount, type, category, date } = tx;
-        await supabase.from('transactions').insert([{ id, title, amount, type, category, date }]);
+        // Retry with tagged title if wallet column is missing in Supabase schema
+        const { id, title, amount, type, category, date, wallet } = tx;
+        const taggedTitle = `[${wallet}] ${title}`;
+        await supabase.from('transactions').insert([{ id, title: taggedTitle, amount, type, category, date }]);
       }
 
       // Re-fetch all transactions
@@ -186,7 +187,25 @@ module.exports = async (req, res) => {
         .select('*')
         .order('date', { ascending: false });
 
-      const transactions = allData || [];
+      const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+      const transactions = (allData || []).map(t => {
+        let wallet = t.wallet;
+        let title = t.title || '';
+
+        const tagMatch = title.match(/^\[([A-Z]+)\]\s*(.*)$/i);
+        if (tagMatch) {
+          wallet = tagMatch[1].toUpperCase();
+          title = tagMatch[2];
+        }
+
+        if (!wallet || wallet === 'CASH') {
+          const found = walletList.find(w => title.toLowerCase().includes(w.toLowerCase()) || (t.category || '').toLowerCase().includes(w.toLowerCase()));
+          if (found) wallet = found;
+          else if (!wallet) wallet = 'CASH';
+        }
+
+        return { ...t, title, wallet: (wallet || 'CASH').toUpperCase() };
+      });
 
       return res.status(201).json({
         success: true,
