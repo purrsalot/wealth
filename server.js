@@ -332,12 +332,18 @@ if (require.main === module && !process.env.VERCEL) {
   function parseTransactionFromText(text, msgTimestamp) {
     const walletPatterns = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash'];
     const incomeKeywords = [
-      'dapat', 'terima', 'gaji', 'bonus', 'transfer masuk', 'freelance', 'salary',
-      'masuk', 'cair', 'diberi', 'jual', 'laku', 'hasil', 'komisi', 'refund',
-      'cashback', 'kembalian', 'untung', 'omset', 'inflow', 'pemasukan',
-      'dikirim', 'dikirimin', 'kiriman', 'transferan', 'dari', 'pemberian',
-      'dikasih', 'kasih', 'ngasih', 'dikasihin', 'memberi', 'amplop', 'sangu',
-      'pesangon', 'hibah', 'titipan', 'hadiah', 'diselipin', 'nambah'
+      'dapat', 'terima', 'diterima', 'gaji', 'gajian', 'bonus', 'transfer masuk', 'freelance', 'salary',
+      'masuk', 'cair', 'diberi', 'jual', 'laku', 'hasil', 'komisi', 'refund', 'cashback', 'kembalian',
+      'untung', 'omset', 'inflow', 'pemasukan', 'dikirim', 'dikirimin', 'kiriman', 'transferan', 'dari',
+      'pemberian', 'dikasih', 'kasih', 'ngasih', 'dikasihin', 'memberi', 'amplop', 'sangu', 'pesangon',
+      'hibah', 'titipan', 'hadiah', 'diselipin', 'nambah', 'nambahin', 'dapet', 'dapetin', 'klaim',
+      'pencairan', 'cairan', 'rejeki', 'rezeki', 'setoran', 'setor', 'pembayaran', 'dibayar', 'pelunasan',
+      'lunas', 'dividen', 'bunga', 'royalti', 'vouchers', 'poin'
+    ];
+
+    const expenseExplicitKeywords = [
+      'kirim ke', 'dikirimin ke', 'transfer ke', 'bayar ke', 'bayarin', 'traktir', 'kasih ke',
+      'ngasih ke', 'transfer keluar', 'bayar', 'beli', 'dibeli', 'keluar'
     ];
 
     const categoryMap = {
@@ -380,11 +386,17 @@ if (require.main === module && !process.env.VERCEL) {
       }
     }
 
-    // 3. Order-Independent Type Detection (INCOME vs EXPENSE)
+    // 3. Smart Type Detection (INCOME vs EXPENSE with Directional Rules)
     let type = 'EXPENSE';
-    for (const kw of incomeKeywords) {
-      const kwRegex = new RegExp(`\\b${kw}\\b`, 'i');
-      if (kwRegex.test(lower)) { type = 'INCOME'; break; }
+    const isExplicitOutflow = expenseExplicitKeywords.some(kw => lower.includes(kw));
+
+    if (!isExplicitOutflow) {
+      for (const kw of incomeKeywords) {
+        if (lower.includes(kw)) {
+          type = 'INCOME';
+          break;
+        }
+      }
     }
 
     // 4. Order-Independent Category Detection (Preset or Dynamic)
