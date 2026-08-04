@@ -1,9 +1,10 @@
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
-const path = require('path');
-const fs = require('fs');
-const cors = require('cors');
+// Global Process Exception Shields (Prevents process crashes)
+process.on('uncaughtException', (err) => {
+  console.error('🛡️ [SECURITY SHIELD] Uncaught Exception intercepted:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('🛡️ [SECURITY SHIELD] Unhandled Promise Rejection intercepted:', reason);
+});
 
 // Load .env if present
 try {
@@ -22,11 +23,13 @@ const { createClient } = require('@supabase/supabase-js');
 
 const APP_PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'transactions.json');
+const BACKUP_FILE = path.join(__dirname, 'transactions_backup.json');
 const AUTH_DIR = path.join(__dirname, 'wa_auth_info');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Serve Static Frontend Assets
 app.use(express.static(__dirname));
@@ -133,8 +136,21 @@ function saveDataLocal() {
   } catch (e) {}
 }
 
+// Hourly Emergency Rolling Backup
+setInterval(() => {
+  if (!process.env.VERCEL && transactions && transactions.length > 0) {
+    try {
+      fs.writeFileSync(BACKUP_FILE, JSON.stringify({ transactions, settings, backupTime: new Date().toISOString() }, null, 2));
+      internalLog('🛡️ [AUTO-BACKUP] Cadangan darurat data transaksi berhasil dibuat');
+    } catch (e) {}
+  }
+}, 3600000);
+
 async function addTransaction(tx) {
   if (!tx.wallet) tx.wallet = 'CASH';
+  // Amount Sanity Bounds Check (Prevents extreme fat-finger typos)
+  tx.amount = Math.min(10000000000, Math.max(1, Number(tx.amount) || 0));
+
   transactions.unshift(tx);
   saveDataLocal();
   internalLog(`💾 Menyimpan transaksi baru: "${tx.title}" [${tx.wallet}] (Rp ${Number(tx.amount).toLocaleString('id-ID')})`);
