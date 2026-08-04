@@ -564,31 +564,53 @@ if (require.main === module && !process.env.VERCEL) {
   }
 
   // ==========================================
-  // WHATSAPP BAILEYS BOT
+  // WHATSAPP BAILEYS BOT (PERMANENT AUTH & AUTO-HEALING ENGINE)
   // ==========================================
   try {
-    const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
+    const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
     const qrcodeTerm = require('qrcode-terminal');
     const P = require('pino');
 
     let isReconnecting = false;
 
+    // Self-Healing Function: Clean corrupted pre-keys while keeping main creds.json login!
+    function autoFixPreKeys() {
+      try {
+        if (fs.existsSync(AUTH_DIR)) {
+          const files = fs.readdirSync(AUTH_DIR);
+          let cleaned = 0;
+          files.forEach(file => {
+            if (file.startsWith('pre-key-') || (file.startsWith('session-') && !file.includes('creds'))) {
+              try { fs.unlinkSync(path.join(AUTH_DIR, file)); cleaned++; } catch (e) {}
+            }
+          });
+          if (cleaned > 0) {
+            internalLog(`🔧 [AUTO-HEAL] Memperbaiki ${cleaned} kunci sesi pre-key desinkron secara otomatis!`);
+          }
+        }
+      } catch (e) {}
+    }
+
     async function startWhatsAppBot() {
       if (isReconnecting) return;
       isReconnecting = true;
 
+      const { version } = await fetchLatestBaileysVersion();
       const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
       const waSocket = makeWASocket({
+        version,
         auth: authState,
         logger: P({ level: 'silent' }),
         printQRInTerminal: false,
         browser: Browsers.ubuntu('Desktop'),
         syncFullHistory: false,
-        markOnlineOnConnect: true,
+        markOnlineOnConnect: false,
         generateHighQualityLinkPreview: true,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 25000
+        keepAliveIntervalMs: 15000,
+        retryRequestDelayMs: 250
       });
 
       // Mac Sleep & Network Wakeup Watchdog
@@ -666,6 +688,9 @@ if (require.main === module && !process.env.VERCEL) {
           if (isLoggedOut) {
             internalLog('🚪 Sesi Logged Out. Menghapus folder auth...');
             try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
+          } else {
+            // Auto-heal session pre-keys without resetting creds.json!
+            autoFixPreKeys();
           }
 
           setTimeout(() => {
