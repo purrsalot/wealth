@@ -142,6 +142,38 @@ async function sendTelegramMessage(chatId, text) {
   }
 }
 
+async function sendTelegramDocument(chatId, filename, csvContent, captionText) {
+  try {
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).slice(2);
+    let body = '';
+
+    body += `--${boundary}\r\n`;
+    body += `Content-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}\r\n`;
+
+    body += `--${boundary}\r\n`;
+    body += `Content-Disposition: form-data; name="caption"\r\n\r\n${captionText}\r\n`;
+
+    body += `--${boundary}\r\n`;
+    body += `Content-Disposition: form-data; name="parse_mode"\r\n\r\nMarkdown\r\n`;
+
+    body += `--${boundary}\r\n`;
+    body += `Content-Disposition: form-data; name="document"; filename="${filename}"\r\n`;
+    body += `Content-Type: text/csv\r\n\r\n`;
+    body += `${csvContent}\r\n`;
+    body += `--${boundary}\r\n--`;
+
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`
+      },
+      body: body
+    });
+  } catch (e) {
+    console.error('Failed to send Telegram document:', e);
+  }
+}
+
 // ==========================================
 // VERCEL SERVERLESS HANDLER
 // ==========================================
@@ -179,6 +211,7 @@ module.exports = async function handler(req, res) {
         `• _dapat uang jajan 356.381 di bca_\n` +
         `• _kevin bayar 300k_\n\n` +
         `⚡ *Perintah Slash Telegram KAEL*:\n` +
+        `• */archive* atau */export* ➔ Export 15 hari ke CSV & bersihkan Cloud DB\n` +
         `• */report* ➔ Laporan rekap keuangan\n` +
         `• */sisa* atau */budget* ➔ Hitung budget aman harian\n` +
         `• */budget 15jt* ➔ Set target budget bulanan\n` +
@@ -188,6 +221,56 @@ module.exports = async function handler(req, res) {
         `• */undo* ➔ Batal / hapus transaksi terakhir\n` +
         `• */reset* ➔ Reset total income & expense ke 0`
       );
+      return res.status(200).json({ ok: true });
+    }
+
+    // Archive & Export CSV (/archive, /export, /backup)
+    if (lower === '/archive' || lower === '/export' || lower === '/backup' || lower === '!y archive' || lower === '!y export') {
+      const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: oldTx } = await supabase.from('transactions').select('*').lte('date', fifteenDaysAgo).order('date', { ascending: true });
+
+      if (!oldTx || oldTx.length === 0) {
+        const { data: allTx } = await supabase.from('transactions').select('*').order('date', { ascending: true });
+        if (!allTx || allTx.length === 0) {
+          await sendTelegramMessage(chatId, '❌ Tidak ada transaksi untuk diarsip saat ini.');
+          return res.status(200).json({ ok: true });
+        }
+
+        let csv = 'ID,Tanggal,Judul,Jenis,Kategori,Dompet,Nominal\n';
+        allTx.forEach(t => {
+          const dateStr = new Date(t.date).toLocaleString('id-ID');
+          const titleEsc = `"${(t.title || '').replace(/"/g, '""')}"`;
+          csv += `${t.id},${dateStr},${titleEsc},${t.type},${t.category},${t.wallet},${t.amount}\n`;
+        });
+
+        const dateTag = new Date().toISOString().slice(0, 10);
+        const filename = `arsip_keuangan_kael_${dateTag}.csv`;
+        const caption = `📄 *ARSIP EXCEL/CSV KEUANGAN KAEL* 🤖\n\n` +
+          `Total *${allTx.length} transaksi* telah diexport ke CSV!\n` +
+          `ℹ️ _Belum ada transaksi berusia >15 hari untuk dihapus dari Cloud DB._`;
+
+        await sendTelegramDocument(chatId, filename, csv, caption);
+        return res.status(200).json({ ok: true });
+      }
+
+      let csv = 'ID,Tanggal,Judul,Jenis,Kategori,Dompet,Nominal\n';
+      const idsToDelete = [];
+      oldTx.forEach(t => {
+        idsToDelete.push(t.id);
+        const dateStr = new Date(t.date).toLocaleString('id-ID');
+        const titleEsc = `"${(t.title || '').replace(/"/g, '""')}"`;
+        csv += `${t.id},${dateStr},${titleEsc},${t.type},${t.category},${t.wallet},${t.amount}\n`;
+      });
+
+      await supabase.from('transactions').delete().in('id', idsToDelete);
+
+      const dateTag = new Date().toISOString().slice(0, 10);
+      const filename = `arsip_15hari_kael_${dateTag}.csv`;
+      const caption = `📦 *ARSIP KEUANGAN 15 HARIAN BY KAEL* 🤖\n\n` +
+        `📄 Total *${oldTx.length} transaksi* (>15 hari) telah berhasil diexport ke file CSV/Excel di atas.\n` +
+        `🧹 Transaksi lama tersebut otomatis dibersihkan dari Cloud DB agar DB tetap ultra-ringan!`;
+
+      await sendTelegramDocument(chatId, filename, csv, caption);
       return res.status(200).json({ ok: true });
     }
 
