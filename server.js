@@ -349,6 +349,7 @@ if (require.main === module && !process.env.VERCEL) {
     const categoryMap = {
       FAMILY: ['mama', 'papa', 'ortu', 'orang tua', 'kakak', 'kaka', 'adik', 'anak', 'keluarga', 'family', 'sangu'],
       GIFT: ['dikirim', 'dikirimin', 'kiriman', 'dikasih', 'kasih', 'ngasih', 'pemberian', 'amplop', 'kado', 'hadiah', 'hibah'],
+      DEBT: ['utang', 'hutang', 'bayar utang', 'pelunasan', 'cicilan', 'pinjaman', 'pinjam', 'talangan'],
       FOOD: ['makan', 'minum', 'kopi', 'ayam', 'nasi', 'snack', 'jajan', 'warteg', 'bakso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto', 'resto', 'kafe', 'cafe', 'es', 'kuliner'],
       TRANSPORT: ['grab', 'gojek', 'bensin', 'pertamax', 'parkir', 'tol', 'ojol', 'taxi', 'bus', 'kereta', 'mrt', 'service', 'oli', 'ban', 'tambal', 'angkot'],
       BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos', 'bpjs', 'pajak', 'asuransi', 'langganan', 'tagihan'],
@@ -386,15 +387,23 @@ if (require.main === module && !process.env.VERCEL) {
       }
     }
 
-    // 3. Smart Type Detection (INCOME vs EXPENSE with Directional Rules)
+    // 3. Smart Type Detection (Grammar Rules for "bayar": "bayar kevin" = EXPENSE vs "kevin bayar" = INCOME)
     let type = 'EXPENSE';
-    const isExplicitOutflow = expenseExplicitKeywords.some(kw => lower.includes(kw));
 
-    if (!isExplicitOutflow) {
-      for (const kw of incomeKeywords) {
-        if (lower.includes(kw)) {
-          type = 'INCOME';
-          break;
+    const isSubjectBayarIncome = (/\b[a-z]{3,}\s+bayar\b/i.test(lower) || /\b[a-z]{3,}\s+membayar\b/i.test(lower)) && !lower.startsWith('bayar');
+    const isBayarSubjectExpense = /^(bayar|membayar|bayarin|bayar ke)\b/i.test(lower) || /\bbayar ke\b/i.test(lower);
+
+    if (isSubjectBayarIncome && !isBayarSubjectExpense) {
+      type = 'INCOME';
+    } else {
+      const isExplicitOutflow = expenseExplicitKeywords.some(kw => lower.includes(kw));
+
+      if (!isExplicitOutflow) {
+        for (const kw of incomeKeywords) {
+          if (lower.includes(kw)) {
+            type = 'INCOME';
+            break;
+          }
         }
       }
     }
