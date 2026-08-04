@@ -418,7 +418,7 @@ if (require.main === module && !process.env.VERCEL) {
       if (category) break;
     }
 
-    // 5. Clean Title Construction (Removing Amount & Wallet Tokens, Preserving Context)
+    // 5. Clean Title & Natural Human Context Polishing
     let titleClean = lower;
     if (amountRawMatch) {
       titleClean = titleClean.replace(amountRawMatch, '');
@@ -426,23 +426,35 @@ if (require.main === module && !process.env.VERCEL) {
     if (matchedWalletWord) {
       titleClean = titleClean.replace(new RegExp(`\\b${matchedWalletWord}\\b`, 'gi'), '');
     }
-    titleClean = titleClean
-      .replace(/!y:?\s*/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
 
-    // If still no preset category, dynamically generate Category from first meaningful word of remaining title!
+    const noiseWords = ['!y:', '!y', 'di', 'ke', 'pada', 'untuk', 'yang', 'dengan', 'dan', 'sama', 'via', 'pakai', 'lewat'];
+    noiseWords.forEach(nw => {
+      titleClean = titleClean.replace(new RegExp(`\\b${nw}\\b`, 'gi'), '');
+    });
+
+    titleClean = titleClean.replace(/\s+/g, ' ').trim();
+
+    // If still no preset category, dynamically generate Category from first meaningful word!
     if (!category) {
-      const stopWords = ['dari', 'ke', 'di', 'pada', 'untuk', 'yang', 'dengan', 'dan', 'sama'];
-      const words = titleClean.split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
+      const words = titleClean.split(/\s+/).filter(w => w.length > 2);
       if (words.length > 0) {
         category = words[0].toUpperCase().replace(/[^A-Z]/g, '');
       }
       if (!category || category.length < 2) category = type === 'INCOME' ? 'SALARY' : 'MISC';
     }
 
+    // Human Context Title Formatting
     let title = titleClean.charAt(0).toUpperCase() + titleClean.slice(1);
-    if (!title) title = type === 'INCOME' ? 'Pemasukan' : 'Pengeluaran';
+
+    if (type === 'INCOME') {
+      if ((lower.includes('mama') || lower.includes('papa') || lower.includes('ortu')) && !title.toLowerCase().includes('kiriman')) {
+        title = 'Kiriman ' + title;
+      } else if ((lower.includes('bayar') || lower.includes('utang')) && !title.toLowerCase().includes('pelunasan')) {
+        title = 'Pelunasan Utang ' + title;
+      }
+    }
+
+    if (!title || title.length < 2) title = type === 'INCOME' ? 'Pemasukan' : 'Pengeluaran';
 
     const txDate = msgTimestamp ? new Date(Number(msgTimestamp) * 1000).toISOString() : new Date().toISOString();
 
