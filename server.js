@@ -216,6 +216,17 @@ app.get('/api/transactions', async (req, res) => {
   res.json({ transactions, summary: getSummary(), settings, supabaseConnected });
 });
 
+app.get('/api/reset-wa', async (req, res) => {
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    }
+    res.json({ success: true, message: 'WhatsApp auth session reset! Server will generate a fresh QR code.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Explicit index.html Root Route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -233,6 +244,7 @@ app.get('*', (req, res) => {
 
 let wss = null;
 let server = null;
+let currentWaStatus = 'DISCONNECTED';
 
 function broadcast(event, payload) {
   if (!wss) return;
@@ -244,7 +256,9 @@ function broadcast(event, payload) {
   });
 }
 
-// Only launch standalone server & Baileys WA bot when running locally
+// ==========================================
+// LOCAL SERVER + WHATSAPP BOT
+// ==========================================
 if (require.main === module && !process.env.VERCEL) {
   server = http.createServer(app);
   wss = new WebSocket.Server({ server });
@@ -252,35 +266,293 @@ if (require.main === module && !process.env.VERCEL) {
   wss.on('connection', (ws) => {
     ws.send(JSON.stringify({
       event: 'INIT_STATE',
-      payload: { transactions, settings, summary: getSummary(), supabaseConnected }
+      payload: { transactions, settings, summary: getSummary(), supabaseConnected, waStatus: currentWaStatus }
     }));
+
+    // Handle incoming WebSocket messages from browser
+    ws.on('message', async (raw) => {
+      try {
+        const msg = JSON.parse(raw);
+
+        if (msg.event === 'PARSE_TEXT') {
+          const text = msg.payload || '';
+          const tx = parseTransactionFromText(text);
+          if (tx) await addTransaction(tx);
+        }
+
+        if (msg.event === 'ADD_TRANSACTION') {
+          await addTransaction(msg.payload);
+        }
+
+        if (msg.event === 'DELETE_TRANSACTION') {
+          await deleteTransaction(msg.payload);
+        }
+
+        if (msg.event === 'UPDATE_WALLETS') {
+          settings.wallets = msg.payload;
+          saveDataLocal();
+          broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+        }
+      } catch (e) {
+        console.error('WS message error:', e);
+      }
+    });
   });
 
+  // ==========================================
+  // PARSE NATURAL LANGUAGE (!y: text)
+  // ==========================================
+  function parseTransactionFromText(text) {
+    const walletPatterns = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash'];
+    const incomeKeywords = ['dapat', 'terima', 'gaji', 'bonus', 'transfer masuk', 'freelance', 'salary'];
+    const categoryMap = {
+      FOOD: ['makan', 'kopi', 'ayam', 'nasi', 'snack', 'jajan', 'warteg', 'bakso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto'],
+      TRANSPORT: ['grab', 'gojek', 'bensin', 'pertamax', 'parkir', 'tol', 'ojol', 'taxi', 'bus', 'kereta'],
+      BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos'],
+      SHOPPING: ['beli', 'baju', 'celana', 'sepatu', 'tas', 'gadget', 'hp', 'laptop', 'shopee', 'tokped'],
+      INVESTMENT: ['invest', 'saham', 'reksadana', 'crypto', 'tabung', 'deposito', 'emas', 'nabung']
+    };
+
+    const lower = text.toLowerCase().replace(/!y:\s*/i, '').trim();
+    if (!lower) return null;
+
+    let wallet = 'CASH';
+    for (const w of walletPatterns) {
+      if (lower.includes(w)) { wallet = w.toUpperCase(); break; }
+    }
+
+    let amount = 0;
+    const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+    if (amtMatch) {
+      amount = parseFloat(amtMatch[1].replace(',', '.'));
+      const unit = (amtMatch[2] || '').toLowerCase();
+      if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1000;
+      else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
+    }
+
+    let type = 'EXPENSE';
+    for (const kw of incomeKeywords) {
+      if (lower.includes(kw)) { type = 'INCOME'; break; }
+    }
+
+    let category = type === 'INCOME' ? 'SALARY' : 'FOOD';
+    for (const [cat, keywords] of Object.entries(categoryMap)) {
+      for (const kw of keywords) {
+        if (lower.includes(kw)) { category = cat; break; }
+      }
+    }
+
+    let title = lower
+      .replace(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/gi, '')
+      .replace(new RegExp(walletPatterns.join('|'), 'gi'), '')
+      .replace(/!y:?\s*/gi, '')
+      .trim();
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+    if (!title) title = type === 'INCOME' ? 'Pemasukan' : 'Pengeluaran';
+
+    return {
+      id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      title, amount, type, category, wallet,
+      date: new Date().toISOString()
+    };
+  }
+
+  // ==========================================
+  // WHATSAPP BAILEYS BOT
+  // ==========================================
   try {
-    const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
     const qrcodeTerm = require('qrcode-terminal');
 
     async function startWhatsAppBot() {
-      const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-      const waSocket = makeWASocket({ auth: state, printQRInTerminal: false });
+      const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+      const waSocket = makeWASocket({
+        auth: authState,
+        printQRInTerminal: false,
+        browser: ['Ubuntu', 'Chrome', '22.04.4']
+      });
+
       waSocket.ev.on('creds.update', saveCreds);
+
       waSocket.ev.on('connection.update', (update) => {
-        if (update.qr) qrcodeTerm.generate(update.qr, { small: true });
-        if (update.connection === 'open') console.log('✅ WHATSAPP BOT CONNECTED LOCAL!');
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+          console.log('\n==================================================');
+          console.log('📱 NEW WHATSAPP QR CODE GENERATED! SCAN BELOW:');
+          console.log('==================================================\n');
+          qrcodeTerm.generate(qr, { small: true });
+          console.log('\n📱 Buka juga http://localhost:3000 -> klik SCAN WA QR\n');
+
+          currentWaStatus = 'SCAN_QR_REQUIRED';
+          broadcast('WA_STATUS', { status: 'SCAN_QR_REQUIRED', qr: qr });
+        }
+
+        if (connection === 'open') {
+          currentWaStatus = 'CONNECTED';
+          console.log('✅ WHATSAPP BOT CONNECTED & READY!');
+          broadcast('WA_STATUS', { status: 'CONNECTED' });
+        }
+
+        if (connection === 'close') {
+          currentWaStatus = 'DISCONNECTED';
+          broadcast('WA_STATUS', { status: 'DISCONNECTED' });
+
+          const statusCode = lastDisconnect?.error?.output?.statusCode;
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+
+          console.log(`⚠️ WA Disconnected (Status Code: ${statusCode || 'Unknown'}). Reconnecting...`);
+
+          if (isLoggedOut || statusCode === 408 || statusCode === 515) {
+            console.log('🔄 Session reset required. Clearing wa_auth_info for fresh QR...');
+            try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
+          }
+
+          setTimeout(() => {
+            startWhatsAppBot().catch(err => console.warn('Re-start WA error:', err.message));
+          }, 3000);
+        }
+      });
+
+      // ==========================================
+      // HANDLE INCOMING WA MESSAGES
+      // ==========================================
+      waSocket.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
+        const text = msg.message.conversation
+          || msg.message.extendedTextMessage?.text
+          || '';
+
+        const jid = msg.key.remoteJid;
+        const lower = text.toLowerCase().trim();
+
+        // Only process !y commands
+        if (!lower.startsWith('!y')) return;
+
+        console.log(`📩 WA Message: "${text}"`);
+
+        // !y help
+        if (lower === '!y help' || lower === '!y') {
+          await waSocket.sendMessage(jid, { text:
+            `*📊 WEALTH RADAR // ID - COMMAND LIST*\n\n` +
+            `*!y: [dompet] [nominal] [keterangan]*\n→ Catat transaksi\n→ Contoh: !y: bca 50k makan siang\n\n` +
+            `*!y total* → Cek total saldo\n` +
+            `*!y undo* → Hapus transaksi terakhir\n` +
+            `*!y bulan* → Rekap bulan ini\n` +
+            `*!y cat* → Breakdown per kategori\n` +
+            `*!y [nama dompet]* → Cek saldo dompet\n→ Contoh: !y bca, !y gopay`
+          });
+          return;
+        }
+
+        // !y total
+        if (lower === '!y total') {
+          const s = getSummary();
+          await waSocket.sendMessage(jid, { text:
+            `*💰 NET WORTH: Rp ${Number(s.netWorth).toLocaleString('id-ID')}*\n\n` +
+            `📈 Income: Rp ${Number(s.totalIncome).toLocaleString('id-ID')}\n` +
+            `📉 Expense: Rp ${Number(s.totalExpense).toLocaleString('id-ID')}\n` +
+            `❤️ Health Score: ${s.score}/100 (${s.healthBadge})`
+          });
+          return;
+        }
+
+        // !y undo
+        if (lower === '!y undo') {
+          if (transactions.length > 0) {
+            const removed = transactions[0];
+            await deleteTransaction(removed.id);
+            await waSocket.sendMessage(jid, { text: `🗑️ Dihapus: "${removed.title}" (Rp ${Number(removed.amount).toLocaleString('id-ID')})` });
+          } else {
+            await waSocket.sendMessage(jid, { text: '❌ Tidak ada transaksi untuk di-undo.' });
+          }
+          return;
+        }
+
+        // !y bulan
+        if (lower === '!y bulan') {
+          const now = new Date();
+          const monthTx = transactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          const inc = monthTx.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount), 0);
+          const exp = monthTx.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0);
+          await waSocket.sendMessage(jid, { text:
+            `*📅 REKAP BULAN INI*\n\n` +
+            `📊 Total Transaksi: ${monthTx.length}\n` +
+            `📈 Pemasukan: Rp ${inc.toLocaleString('id-ID')}\n` +
+            `📉 Pengeluaran: Rp ${exp.toLocaleString('id-ID')}\n` +
+            `💰 Sisa: Rp ${(inc - exp).toLocaleString('id-ID')}`
+          });
+          return;
+        }
+
+        // !y cat
+        if (lower === '!y cat') {
+          const cats = {};
+          transactions.filter(t => t.type === 'EXPENSE').forEach(t => {
+            cats[t.category] = (cats[t.category] || 0) + Number(t.amount);
+          });
+          let catText = '*📂 BREAKDOWN KATEGORI*\n\n';
+          Object.entries(cats).sort((a, b) => b[1] - a[1]).forEach(([cat, total]) => {
+            catText += `• ${cat}: Rp ${total.toLocaleString('id-ID')}\n`;
+          });
+          if (Object.keys(cats).length === 0) catText += 'Belum ada pengeluaran.';
+          await waSocket.sendMessage(jid, { text: catText });
+          return;
+        }
+
+        // !y [wallet name] - check specific wallet
+        const walletCheck = lower.replace('!y ', '').trim().toUpperCase();
+        const wallets = (settings.wallets || []).map(w => w.toUpperCase());
+        if (wallets.includes(walletCheck)) {
+          const s = getSummary();
+          const bal = s.walletBalances[walletCheck] || 0;
+          await waSocket.sendMessage(jid, { text: `*💳 ${walletCheck}*\nSaldo: Rp ${bal.toLocaleString('id-ID')}` });
+          return;
+        }
+
+        // !y: [transaction] - record transaction
+        if (lower.startsWith('!y:')) {
+          const tx = parseTransactionFromText(text);
+          if (tx && tx.amount > 0) {
+            await addTransaction(tx);
+            const emoji = tx.type === 'INCOME' ? '📈' : '📉';
+            await waSocket.sendMessage(jid, { text:
+              `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT!*\n\n` +
+              `📝 ${tx.title}\n` +
+              `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
+              `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
+              `⚡ Tersimpan ke Supabase Cloud DB!`
+            });
+          } else {
+            await waSocket.sendMessage(jid, { text: '❌ Format tidak valid. Contoh: !y: bca 50k makan siang' });
+          }
+          return;
+        }
       });
     }
 
     loadData().then(() => {
       server.listen(APP_PORT, () => {
-        console.log(`🚀 WEALTH RADAR ID SERVER AT http://localhost:${APP_PORT}`);
+        console.log(`\n🚀 WEALTH RADAR ID SERVER AT http://localhost:${APP_PORT}`);
+        console.log(`📱 Buka http://localhost:${APP_PORT} → klik SCAN WA QR untuk pairing WhatsApp\n`);
         startWhatsAppBot().catch(e => console.warn('WA Bot notice:', e.message));
       });
     });
   } catch (e) {
-    console.warn('Baileys notice:', e.message);
+    loadData().then(() => {
+      server.listen(APP_PORT, () => {
+        console.log(`🚀 WEALTH RADAR ID SERVER AT http://localhost:${APP_PORT} (tanpa WA Bot)`);
+      });
+    });
   }
 } else {
   loadData();
 }
 
 module.exports = app;
+
