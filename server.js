@@ -50,6 +50,14 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY) {
   }
 }
 
+// ==========================================
+// HUMAN READABLE INTERNAL LOG FORMATTER
+// ==========================================
+function internalLog(message) {
+  const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  console.log(`## [INTERNAL - ${time}] ${message}`);
+}
+
 // Data Store (Hybrid Supabase + File Backup)
 let transactions = [];
 let settings = { 
@@ -80,7 +88,7 @@ async function loadData() {
 
       if (!error && data) {
         transactions = data;
-        console.log(`📦 Loaded ${data.length} transactions from Supabase Cloud DB!`);
+        internalLog(`📦 Memuat ${data.length} transaksi dari Supabase Cloud DB`);
         return;
       }
     } catch (e) {
@@ -109,6 +117,7 @@ async function addTransaction(tx) {
   if (!tx.wallet) tx.wallet = 'CASH';
   transactions.unshift(tx);
   saveDataLocal();
+  internalLog(`💾 Menyimpan transaksi baru: "${tx.title}" (Rp ${Number(tx.amount).toLocaleString('id-ID')})`);
 
   if (supabaseConnected && supabase) {
     try {
@@ -128,6 +137,7 @@ async function addTransaction(tx) {
 async function deleteTransaction(id) {
   transactions = transactions.filter(t => t.id !== id);
   saveDataLocal();
+  internalLog(`🗑️ Menghapus transaksi (ID: ${id}) dari Supabase Cloud DB`);
 
   if (supabaseConnected && supabase) {
     try {
@@ -414,7 +424,7 @@ if (require.main === module && !process.env.VERCEL) {
 
         // Gap > 10 seconds means Mac was in SLEEP mode!
         if (gap > 10000) {
-          console.log(`\n🌙 Mac terdeteksi BANGUN DARI SLEEP (${(gap / 1000).toFixed(1)}s). Melakukan Auto-Reconnect WA Bot...`);
+          internalLog(`🌙 Mac terdeteksi BANGUN DARI SLEEP (${(gap / 1000).toFixed(1)}s gap). Melakukan Auto-Reconnect WA Bot...`);
           global._wasInSleep = true;
           currentWaStatus = 'DISCONNECTED';
           broadcast('WA_STATUS', { status: 'DISCONNECTED' });
@@ -424,17 +434,17 @@ if (require.main === module && !process.env.VERCEL) {
         }
       }, 4000);
 
-      waSocket.ev.on('creds.update', saveCreds);
+      waSocket.ev.on('creds.update', () => {
+        saveCreds();
+        internalLog('🔑 Menyimpan & memperbarui kunci sesi autentikasi (creds)...');
+      });
 
       waSocket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log('\n==================================================');
-          console.log('📱 SCAN KODE QR WHATSAPP DI BAWAH INI (DARI TERMINAL):');
-          console.log('==================================================\n');
+          internalLog('📱 Kode QR baru berhasil dibuat & dikirim ke browser / terminal');
           qrcodeTerm.generate(qr, { small: true });
-          console.log('\n📱 Buka WhatsApp di HP -> Perangkat Tertaut -> Scan QR\n');
 
           currentQrCode = qr;
           currentWaStatus = 'SCAN_QR_REQUIRED';
@@ -445,9 +455,7 @@ if (require.main === module && !process.env.VERCEL) {
           isReconnecting = false;
           currentQrCode = null;
           currentWaStatus = 'CONNECTED';
-          console.log('\n==================================================');
-          console.log('✅ WHATSAPP BOT CONNECTED & SESI TERSEDIA PERMANEN!');
-          console.log('==================================================\n');
+          internalLog('✅ Koneksi WhatsApp terhubung & siap menerima perintah!');
           broadcast('WA_STATUS', { status: 'CONNECTED' });
 
           // Auto Sync & Send notification when waking up from Sleep
@@ -476,10 +484,10 @@ if (require.main === module && !process.env.VERCEL) {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
           const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
-          console.log(`⚠️ WA Disconnected (Code: ${statusCode || 'Unknown'}). Reconnecting in 3s...`);
+          internalLog(`⚠️ WA Disconnected (Status Code: ${statusCode || 'Unknown'}). Reconnecting in 3s...`);
 
           if (isLoggedOut) {
-            console.log('🚪 Sesi Logged Out. Menghapus folder auth...');
+            internalLog('🚪 Sesi Logged Out. Menghapus folder auth...');
             try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
           }
 
