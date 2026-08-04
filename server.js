@@ -787,7 +787,7 @@ if (require.main === module && !process.env.VERCEL) {
             `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
             `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
             `🕒 Waktu: ${dateStr}\n` +
-            `⚡ Tersimpan ke Supabase Cloud DB!`
+            `✅ Success`
           });
           return;
         } else if (lower.startsWith('!y:')) {
