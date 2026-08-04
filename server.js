@@ -534,8 +534,12 @@ if (require.main === module && !process.env.VERCEL) {
         const jid = msg.key.remoteJid;
         const lower = text.toLowerCase().trim();
 
-        // Only process !y commands
-        if (!lower.startsWith('!y')) return;
+        // Check if message starts with !y OR contains a natural transaction pattern (e.g. bca 50k makan, 100rb gaji)
+        const hasNominalPattern = /(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)\b/i.test(lower) || /\b\d{4,9}\b/.test(lower);
+        const hasWalletOrKeyword = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash', 'makan', 'bensin', 'gaji', 'dapat', 'bayar', 'beli', 'kopi', 'warteg', 'pulsa', 'wifi', 'listrik'].some(w => lower.includes(w));
+        const isTransactionFormat = lower.startsWith('!y') || (hasNominalPattern && hasWalletOrKeyword);
+
+        if (!isTransactionFormat) return;
 
         // Owner Security Check: Only allow commands from owner's linked number / self
         const ownerJid = waSocket.user?.id ? waSocket.user.id.split(':')[0].split('@')[0] : '';
@@ -688,28 +692,27 @@ if (require.main === module && !process.env.VERCEL) {
           return;
         }
 
-        // !y: [transaction] - record transaction
-        if (lower.startsWith('!y:')) {
-          const tx = parseTransactionFromText(text, msg.messageTimestamp);
-          if (tx && tx.amount > 0) {
-            if (isDuplicateTransaction(tx)) {
-              await waSocket.sendMessage(jid, { text: `⏭️ Transaksi "${tx.title}" (Rp ${Number(tx.amount).toLocaleString('id-ID')}) sudah pernah dicatat sebelumnya.` });
-              return;
-            }
-            await addTransaction(tx);
-            const emoji = tx.type === 'INCOME' ? '📈' : '📉';
-            const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-            await waSocket.sendMessage(jid, { text:
-              `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT!*\n\n` +
-              `📝 ${tx.title}\n` +
-              `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
-              `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
-              `🕒 Waktu: ${dateStr}\n` +
-              `⚡ Tersimpan ke Supabase Cloud DB!`
-            });
-          } else {
-            await waSocket.sendMessage(jid, { text: '❌ Format tidak valid. Contoh: !y: bca 50k makan siang' });
+        // Record transaction (supports with or without !y: prefix)
+        const tx = parseTransactionFromText(text, msg.messageTimestamp);
+        if (tx && tx.amount > 0) {
+          if (isDuplicateTransaction(tx)) {
+            await waSocket.sendMessage(jid, { text: `⏭️ Transaksi "${tx.title}" (Rp ${Number(tx.amount).toLocaleString('id-ID')}) sudah pernah dicatat sebelumnya.` });
+            return;
           }
+          await addTransaction(tx);
+          const emoji = tx.type === 'INCOME' ? '📈' : '📉';
+          const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          await waSocket.sendMessage(jid, { text:
+            `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT!*\n\n` +
+            `📝 ${tx.title}\n` +
+            `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
+            `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
+            `🕒 Waktu: ${dateStr}\n` +
+            `⚡ Tersimpan ke Supabase Cloud DB!`
+          });
+          return;
+        } else if (lower.startsWith('!y:')) {
+          await waSocket.sendMessage(jid, { text: '❌ Format tidak valid. Contoh: bca 50k makan siang atau !y: mandiri 2jt gaji' });
           return;
         }
       });
