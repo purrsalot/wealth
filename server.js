@@ -327,7 +327,7 @@ if (require.main === module && !process.env.VERCEL) {
   }
 
   // ==========================================
-  // SMART AI PARSER (!y: text or natural text)
+  // ORDER-INDEPENDENT SMART AI PARSER
   // ==========================================
   function parseTransactionFromText(text, msgTimestamp) {
     const walletPatterns = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash'];
@@ -355,48 +355,64 @@ if (require.main === module && !process.env.VERCEL) {
     const lower = text.toLowerCase().replace(/!y:\s*/i, '').trim();
     if (!lower) return null;
 
-    // 1. Detect Wallet
-    let wallet = 'CASH';
-    for (const w of walletPatterns) {
-      if (lower.includes(w)) { wallet = w.toUpperCase(); break; }
-    }
-
-    // 2. Detect Amount
+    // 1. Order-Independent Amount Detection
     let amount = 0;
+    let amountRawMatch = '';
     const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
     if (amtMatch) {
+      amountRawMatch = amtMatch[0];
       amount = parseFloat(amtMatch[1].replace(',', '.'));
       const unit = (amtMatch[2] || '').toLowerCase();
       if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1000;
       else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
     }
 
-    // 3. Detect Type (INCOME vs EXPENSE)
-    let type = 'EXPENSE';
-    for (const kw of incomeKeywords) {
-      if (lower.includes(kw)) { type = 'INCOME'; break; }
+    // 2. Order-Independent Wallet Detection
+    let wallet = 'CASH';
+    let matchedWalletWord = '';
+    for (const w of walletPatterns) {
+      const wRegex = new RegExp(`\\b${w}\\b`, 'i');
+      if (wRegex.test(lower)) {
+        wallet = w.toUpperCase();
+        matchedWalletWord = w;
+        break;
+      }
     }
 
-    // 4. Detect Category (Preset vs Dynamic Custom Category)
+    // 3. Order-Independent Type Detection (INCOME vs EXPENSE)
+    let type = 'EXPENSE';
+    for (const kw of incomeKeywords) {
+      const kwRegex = new RegExp(`\\b${kw}\\b`, 'i');
+      if (kwRegex.test(lower)) { type = 'INCOME'; break; }
+    }
+
+    // 4. Order-Independent Category Detection (Preset or Dynamic)
     let category = null;
     for (const [cat, keywords] of Object.entries(categoryMap)) {
       for (const kw of keywords) {
-        if (lower.includes(kw)) { category = cat; break; }
+        const catRegex = new RegExp(`\\b${kw}\\b`, 'i');
+        if (catRegex.test(lower)) { category = cat; break; }
       }
       if (category) break;
     }
 
-    // Clean Title & Extract Dynamic Category if no preset category matched
-    let titleClean = lower
-      .replace(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/gi, '')
-      .replace(new RegExp(walletPatterns.join('|'), 'gi'), '')
-      .replace(new RegExp(incomeKeywords.join('|'), 'gi'), '')
+    // 5. Clean Title Construction (Removing Amount & Wallet Tokens, Preserving Context)
+    let titleClean = lower;
+    if (amountRawMatch) {
+      titleClean = titleClean.replace(amountRawMatch, '');
+    }
+    if (matchedWalletWord) {
+      titleClean = titleClean.replace(new RegExp(`\\b${matchedWalletWord}\\b`, 'gi'), '');
+    }
+    titleClean = titleClean
       .replace(/!y:?\s*/gi, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
-    // If still no preset category, dynamically generate Category from first word!
+    // If still no preset category, dynamically generate Category from first meaningful word of remaining title!
     if (!category) {
-      const words = titleClean.split(/\s+/).filter(w => w.length > 2);
+      const stopWords = ['dari', 'ke', 'di', 'pada', 'untuk', 'yang', 'dengan', 'dan', 'sama'];
+      const words = titleClean.split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
       if (words.length > 0) {
         category = words[0].toUpperCase().replace(/[^A-Z]/g, '');
       }
