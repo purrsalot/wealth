@@ -413,6 +413,7 @@ if (require.main === module && !process.env.VERCEL) {
         // Gap > 10 seconds means Mac was in SLEEP mode!
         if (gap > 10000) {
           console.log(`\n🌙 Mac terdeteksi BANGUN DARI SLEEP (${(gap / 1000).toFixed(1)}s). Melakukan Auto-Reconnect WA Bot...`);
+          global._wasInSleep = true;
           currentWaStatus = 'DISCONNECTED';
           broadcast('WA_STATUS', { status: 'DISCONNECTED' });
           isReconnecting = false;
@@ -423,7 +424,7 @@ if (require.main === module && !process.env.VERCEL) {
 
       waSocket.ev.on('creds.update', saveCreds);
 
-      waSocket.ev.on('connection.update', (update) => {
+      waSocket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
@@ -446,6 +447,22 @@ if (require.main === module && !process.env.VERCEL) {
           console.log('✅ WHATSAPP BOT CONNECTED & SESI TERSEDIA PERMANEN!');
           console.log('==================================================\n');
           broadcast('WA_STATUS', { status: 'CONNECTED' });
+
+          // Send notification if waking up from Sleep
+          if (global._wasInSleep && lastUserJid) {
+            global._wasInSleep = false;
+            try {
+              const nowStr = new Date().toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+              await waSocket.sendMessage(lastUserJid, { text:
+                `🌙 *NOTIFIKASI: LAPTOP MAC BANGUN DARI SLEEP!*\n\n` +
+                `🕒 Waktu Bangun: ${nowStr}\n` +
+                `🟢 Status: PM2 Server & Bot WA Kembali *ONLINE*\n\n` +
+                `💡 _Ketik *!y sync* untuk menyelaraskan transaksi yang dikirim saat laptop sleep!_`
+              });
+            } catch (e) {
+              console.warn('Sleep notification error:', e.message);
+            }
+          }
         }
 
         if (connection === 'close') {
