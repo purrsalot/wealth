@@ -757,7 +757,7 @@ if (require.main === module && !process.env.VERCEL) {
         }
 
         lastUserJid = jid;
-        internalLog(`📩 Pesan WA diterima dari Owner (${senderJid}): "${text}"`);
+        internalLog(`📩 Pesan WA diterima dari Owner (${cleanSender}): "${text}"`);
 
         // !y help
         if (lower === '!y help' || lower === '!y') {
