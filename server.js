@@ -241,10 +241,50 @@ function getSummary() {
   };
 }
 
+app.use(express.json());
+
 // REST API
 app.get('/api/transactions', async (req, res) => {
   await loadData();
   res.json({ transactions, summary: getSummary(), settings, supabaseConnected });
+});
+
+app.post('/api/transactions', async (req, res) => {
+  try {
+    const body = req.body || {};
+    let tx;
+    if (body.rawText) {
+      tx = parseTransactionFromText(body.rawText);
+    } else {
+      tx = {
+        id: body.id || 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        title: body.title || 'Transaksi',
+        amount: Number(body.amount) || 0,
+        type: body.type || 'EXPENSE',
+        category: body.category || 'FOOD',
+        wallet: (body.wallet || 'CASH').toUpperCase(),
+        date: body.date || new Date().toISOString()
+      };
+    }
+    if (tx && tx.amount > 0) {
+      await addTransaction(tx);
+    }
+    res.status(201).json({ success: true, transactions, summary: getSummary(), settings });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/transactions', async (req, res) => {
+  try {
+    const id = req.query.id || req.body?.id;
+    if (id) {
+      await deleteTransaction(id);
+    }
+    res.json({ success: true, transactions, summary: getSummary(), settings });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/reset-wa', async (req, res) => {
