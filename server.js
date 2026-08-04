@@ -896,6 +896,48 @@ if (require.main === module && !process.env.VERCEL) {
           return;
         }
 
+        // !y tf [nominal] [dompet_asal] ke [dompet_tujuan]
+        if (lower.startsWith('!y tf') || lower.startsWith('!y transfer') || lower.startsWith('pindah ')) {
+          const walletList = ['BCA', 'MANDIRI', 'GOPAY', 'OVO', 'SHOPEEPAY', 'DANA', 'CASH'];
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (!amtMatch) {
+            await waSocket.sendMessage(jid, { text: '❌ Format transfer: !y tf 500k bca ke gopay' });
+            return;
+          }
+          let amount = parseFloat(amtMatch[1].replace(',', '.'));
+          const unit = (amtMatch[2] || '').toLowerCase();
+          if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1000;
+          else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
+
+          const foundWallets = walletList.filter(w => lower.includes(w.toLowerCase()));
+          const fromW = foundWallets[0] || 'BCA';
+          const toW = foundWallets[1] || 'GOPAY';
+          const nowIso = new Date().toISOString();
+
+          const txOut = {
+            id: 'tx_' + Date.now() + '_out',
+            title: `Transfer ke ${toW}`,
+            amount, type: 'EXPENSE', category: 'TRANSFER', wallet: fromW, date: nowIso
+          };
+          const txIn = {
+            id: 'tx_' + (Date.now() + 1) + '_in',
+            title: `Transfer dari ${fromW}`,
+            amount, type: 'INCOME', category: 'TRANSFER', wallet: toW, date: nowIso
+          };
+
+          await addTransaction(txOut);
+          await addTransaction(txIn);
+
+          await waSocket.sendMessage(jid, { text:
+            `🔄 *TRANSFER ANTAK DOMPET BERHASIL!*\n\n` +
+            `💰 Nominal: Rp ${amount.toLocaleString('id-ID')}\n` +
+            `📤 Dari: *${fromW}*\n` +
+            `📥 Ke: *${toW}*\n` +
+            `✅ Net Worth Tetap Utuh!`
+          });
+          return;
+        }
+
         // Record transaction (supports with or without !y: prefix)
         const tx = parseTransactionFromText(text, msg.messageTimestamp);
         if (tx && tx.amount > 0) {
@@ -906,13 +948,22 @@ if (require.main === module && !process.env.VERCEL) {
           await addTransaction(tx);
           const emoji = tx.type === 'INCOME' ? '📈' : '📉';
           const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+          // Calculate Today's Expense Warning
+          const todayStr = new Date().toDateString();
+          const todayExp = transactions.filter(t => t.type === 'EXPENSE' && new Date(t.date).toDateString() === todayStr).reduce((s, t) => s + Number(t.amount), 0);
+          let warningText = '';
+          if (todayExp > 300000) {
+            warningText = `\n⚠️ *WARNING*: Total pengeluaran hari ini Rp ${todayExp.toLocaleString('id-ID')}! Hemat bro!`;
+          }
+
           await waSocket.sendMessage(jid, { text:
             `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT!*\n\n` +
             `📝 ${tx.title}\n` +
             `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
             `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
             `🕒 Waktu: ${dateStr}\n` +
-            `✅ Success`
+            `✅ Success${warningText}`
           });
           return;
         } else if (lower.startsWith('!y:')) {
