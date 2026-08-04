@@ -117,7 +117,7 @@ async function loadData() {
           }
 
           return { ...t, title, wallet: (wallet || 'CASH').toUpperCase() };
-        });
+        }).filter(t => !t.title.includes('WEALTH RADAR') && !t.title.includes('background daemon'));
         internalLog(`📦 Memuat ${transactions.length} transaksi dari Supabase Cloud DB`);
         return;
       }
@@ -736,6 +736,11 @@ if (require.main === module && !process.env.VERCEL) {
         const jid = msg.key.remoteJid;
         const lower = text.toLowerCase().trim();
         if (!lower) return;
+
+        // Ignore Bot's Own Reply Echoes
+        if (text.includes('TERCATAT!*') || text.includes('WEALTH RADAR') || text.includes('✅ Success') || text.includes('🔄 *TRANSFER') || text.includes('✏️ *TRANSAKSI') || text.includes('SINKRONISASI SELESAI')) {
+          return;
+        }
 
         // Extract clean numbers & user IDs
         const rawOwnerJid = waSocket.user?.id || '';
