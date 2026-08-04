@@ -306,10 +306,20 @@ if (require.main === module && !process.env.VERCEL) {
     });
   });
 
+  function isDuplicateTransaction(tx) {
+    return transactions.some(t => {
+      const isSameTitle = (t.title || '').toLowerCase().trim() === (tx.title || '').toLowerCase().trim();
+      const isSameAmount = Number(t.amount) === Number(tx.amount);
+      const isSameWallet = (t.wallet || 'CASH').toUpperCase() === (tx.wallet || 'CASH').toUpperCase();
+      const dateDiff = Math.abs(new Date(t.date).getTime() - new Date(tx.date).getTime());
+      return isSameTitle && isSameAmount && isSameWallet && dateDiff < 86400000;
+    });
+  }
+
   // ==========================================
-  // PARSE NATURAL LANGUAGE (!y: text)
+  // PARSE NATURAL LANGUAGE (!y: text) WITH TIMESTAMP
   // ==========================================
-  function parseTransactionFromText(text) {
+  function parseTransactionFromText(text, msgTimestamp) {
     const walletPatterns = ['bca', 'mandiri', 'gopay', 'ovo', 'shopeepay', 'dana', 'cash'];
     const incomeKeywords = ['dapat', 'terima', 'gaji', 'bonus', 'transfer masuk', 'freelance', 'salary'];
     const categoryMap = {
@@ -357,10 +367,12 @@ if (require.main === module && !process.env.VERCEL) {
     title = title.charAt(0).toUpperCase() + title.slice(1);
     if (!title) title = type === 'INCOME' ? 'Pemasukan' : 'Pengeluaran';
 
+    const txDate = msgTimestamp ? new Date(Number(msgTimestamp) * 1000).toISOString() : new Date().toISOString();
+
     return {
       id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       title, amount, type, category, wallet,
-      date: new Date().toISOString()
+      date: txDate
     };
   }
 
@@ -453,11 +465,41 @@ if (require.main === module && !process.env.VERCEL) {
           await waSocket.sendMessage(jid, { text:
             `*📊 WEALTH RADAR // ID - COMMAND LIST*\n\n` +
             `*!y: [dompet] [nominal] [keterangan]*\n→ Catat transaksi\n→ Contoh: !y: bca 50k makan siang\n\n` +
+            `*!y sync* → Sinkronisasi pesan pending (auto-fit tanggal & jam)\n` +
             `*!y total* → Cek total saldo\n` +
             `*!y undo* → Hapus transaksi terakhir\n` +
             `*!y bulan* → Rekap bulan ini\n` +
             `*!y cat* → Breakdown per kategori\n` +
             `*!y [nama dompet]* → Cek saldo dompet\n→ Contoh: !y bca, !y gopay`
+          });
+          return;
+        }
+
+        // !y sync
+        if (lower === '!y sync') {
+          let addedCount = 0;
+          let skippedCount = 0;
+
+          for (const item of (m.messages || [])) {
+            const itemText = item.message?.conversation || item.message?.extendedTextMessage?.text || '';
+            if (itemText.toLowerCase().trim().startsWith('!y:')) {
+              const tx = parseTransactionFromText(itemText, item.messageTimestamp);
+              if (tx && tx.amount > 0) {
+                if (isDuplicateTransaction(tx)) {
+                  skippedCount++;
+                } else {
+                  await addTransaction(tx);
+                  addedCount++;
+                }
+              }
+            }
+          }
+
+          await waSocket.sendMessage(jid, { text:
+            `✅ *SINKRONISASI SELESAI!*\n\n` +
+            `➕ *${addedCount}* Transaksi baru ditambahkan!\n` +
+            `⏭️ *${skippedCount}* Transaksi dilewati (sudah ada/duplikat).\n` +
+            `📅 Tanggal & Jam disesuaikan otomatis dengan waktu kirim WA!`
           });
           return;
         }
@@ -532,15 +574,21 @@ if (require.main === module && !process.env.VERCEL) {
 
         // !y: [transaction] - record transaction
         if (lower.startsWith('!y:')) {
-          const tx = parseTransactionFromText(text);
+          const tx = parseTransactionFromText(text, msg.messageTimestamp);
           if (tx && tx.amount > 0) {
+            if (isDuplicateTransaction(tx)) {
+              await waSocket.sendMessage(jid, { text: `⏭️ Transaksi "${tx.title}" (Rp ${Number(tx.amount).toLocaleString('id-ID')}) sudah pernah dicatat sebelumnya.` });
+              return;
+            }
             await addTransaction(tx);
             const emoji = tx.type === 'INCOME' ? '📈' : '📉';
+            const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
             await waSocket.sendMessage(jid, { text:
               `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT!*\n\n` +
               `📝 ${tx.title}\n` +
               `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
               `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
+              `🕒 Waktu: ${dateStr}\n` +
               `⚡ Tersimpan ke Supabase Cloud DB!`
             });
           } else {
