@@ -218,6 +218,8 @@ app.get('/api/transactions', async (req, res) => {
 
 app.get('/api/reset-wa', async (req, res) => {
   try {
+    currentQrCode = null;
+    currentWaStatus = 'DISCONNECTED';
     if (fs.existsSync(AUTH_DIR)) {
       fs.rmSync(AUTH_DIR, { recursive: true, force: true });
     }
@@ -225,6 +227,10 @@ app.get('/api/reset-wa', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/wa-qr', (req, res) => {
+  res.json({ status: currentWaStatus, qr: currentQrCode });
 });
 
 // Explicit index.html Root Route
@@ -245,6 +251,7 @@ app.get('*', (req, res) => {
 let wss = null;
 let server = null;
 let currentWaStatus = 'DISCONNECTED';
+let currentQrCode = null;
 
 function broadcast(event, payload) {
   if (!wss) return;
@@ -380,17 +387,20 @@ if (require.main === module && !process.env.VERCEL) {
         if (qr) {
           console.log('📱 QR Code WhatsApp dibuat! Silakan scan dari Web Dashboard di http://localhost:3000');
 
+          currentQrCode = qr;
           currentWaStatus = 'SCAN_QR_REQUIRED';
           broadcast('WA_STATUS', { status: 'SCAN_QR_REQUIRED', qr: qr });
         }
 
         if (connection === 'open') {
+          currentQrCode = null;
           currentWaStatus = 'CONNECTED';
           console.log('✅ WHATSAPP BOT CONNECTED & READY!');
           broadcast('WA_STATUS', { status: 'CONNECTED' });
         }
 
         if (connection === 'close') {
+          currentQrCode = null;
           currentWaStatus = 'DISCONNECTED';
           broadcast('WA_STATUS', { status: 'DISCONNECTED' });
 

@@ -160,17 +160,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateQrCodeUI(qrText) {
     qrCodeContainer.innerHTML = '';
-    if (qrText && window.QRCode) {
-      new QRCode(qrCodeContainer, {
-        text: qrText,
-        width: 200,
-        height: 200,
-        colorDark: '#000000',
-        colorLight: '#ffffff'
-      });
+    if (qrText) {
+      try {
+        if (window.QRCode) {
+          new QRCode(qrCodeContainer, {
+            text: qrText,
+            width: 200,
+            height: 200,
+            colorDark: '#000000',
+            colorLight: '#ffffff'
+          });
+        } else {
+          qrCodeContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrText)}" width="200" height="200" style="border-radius:12px; border:2px solid var(--accent-cyan);" />`;
+        }
+      } catch (e) {
+        qrCodeContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrText)}" width="200" height="200" style="border-radius:12px; border:2px solid var(--accent-cyan);" />`;
+      }
       qrStatusMsg.textContent = 'Scan QR Code di atas menggunakan WhatsApp di HP kamu!';
       qrStatusMsg.style.color = 'var(--accent-amber)';
     }
+  }
+
+  async function fetchWaQr() {
+    try {
+      const res = await window.fetch('/api/wa-qr');
+      const data = await res.json();
+      if (data.status) updateWaStatusUI(data.status);
+      if (data.qr) {
+        updateQrCodeUI(data.qr);
+      } else if (data.status === 'CONNECTED') {
+        qrStatusMsg.textContent = '✅ WhatsApp Berhasil Terkoneksi!';
+        qrStatusMsg.style.color = 'var(--accent-emerald)';
+      }
+    } catch (e) {}
+  }
+
+  // Realtime WebSocket for WA QR & Status on Localhost
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    try {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = window.location.host || 'localhost:3000';
+      const socket = new WebSocket(`${wsProtocol}//${wsHost}`);
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const payload = data.payload || {};
+          if (data.event === 'WA_STATUS' || data.event === 'INIT_STATE') {
+            if (payload.waStatus) updateWaStatusUI(payload.waStatus);
+            if (payload.status) updateWaStatusUI(payload.status);
+            if (payload.qrCode) updateQrCodeUI(payload.qrCode);
+            if (payload.qr) updateQrCodeUI(payload.qr);
+          }
+        } catch (e) {}
+      };
+    } catch (e) {}
   }
 
   // ==========================================
@@ -429,7 +473,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Buttons & Modals Handlers
-  btnWaQr.addEventListener('click', () => waQrModal.showModal());
+  btnWaQr.addEventListener('click', () => {
+    fetchWaQr();
+    waQrModal.showModal();
+  });
   closeWaQr.addEventListener('click', () => waQrModal.close());
 
   btnWaShare.addEventListener('click', () => {
