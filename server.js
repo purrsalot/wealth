@@ -637,14 +637,18 @@ if (require.main === module && !process.env.VERCEL) {
         if (lower === '!y help' || lower === '!y') {
           await waSocket.sendMessage(jid, { text:
             `*📊 WEALTH RADAR // ID - COMMAND LIST*\n\n` +
-            `*!y: [dompet] [nominal] [keterangan]*\n→ Catat transaksi\n→ Contoh: !y: bca 50k makan siang\n\n` +
-            `*!y status* → Cek kesehatan PM2 server & database\n` +
-            `*!y sync* → Sinkronisasi pesan pending (auto-fit tanggal & jam)\n` +
-            `*!y total* → Cek total saldo\n` +
+            `*Catat Bebas* → Ketik biasa, contoh: _bca 50k makan siang_ atau _someone kasih 100k gopay_\n\n` +
+            `*!y edit [nominal]* → Revisi nominal transaksi terakhir\n` +
+            `*!y sisa / !y budget* → Hitung budget harian aman s/d akhir bulan\n` +
+            `*!y report* → Laporan ringkas keuangan\n` +
+            `*!y piutang* → Daftar catatan utang/piutang\n` +
+            `*!y status* → Cek status server & database\n` +
+            `*!y sync* → Sinkronisasi pesan pending\n` +
+            `*!y total* → Total saldo Net Worth\n` +
             `*!y undo* → Hapus transaksi terakhir\n` +
-            `*!y bulan* → Rekap bulan ini\n` +
+            `*!y bulan* → Rekap transaksi bulan ini\n` +
             `*!y cat* → Breakdown per kategori\n` +
-            `*!y [nama dompet]* → Cek saldo dompet\n→ Contoh: !y bca, !y gopay`
+            `*!y [dompet]* → Cek saldo spesifik (contoh: _!y bca_)`
           });
           return;
         }
@@ -700,6 +704,106 @@ if (require.main === module && !process.env.VERCEL) {
             `⏭️ *${skippedCount}* Transaksi dilewati (sudah ada/duplikat).\n` +
             `📅 Tanggal & Jam disesuaikan otomatis dengan waktu kirim WA!`
           });
+          return;
+        }
+
+        // !y edit [nominal]
+        if (lower.startsWith('!y edit') || lower.startsWith('!y revisi')) {
+          if (transactions.length === 0) {
+            await waSocket.sendMessage(jid, { text: '❌ Tidak ada transaksi untuk di-edit.' });
+            return;
+          }
+          const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+          if (!amtMatch) {
+            await waSocket.sendMessage(jid, { text: '❌ Sertakan nominal baru. Contoh: !y edit 75k' });
+            return;
+          }
+          let newAmt = parseFloat(amtMatch[1].replace(',', '.'));
+          const unit = (amtMatch[2] || '').toLowerCase();
+          if (unit === 'rb' || unit === 'ribu' || unit === 'k') newAmt *= 1000;
+          else if (unit === 'jt' || unit === 'juta' || unit === 'm') newAmt *= 1000000;
+
+          const lastTx = transactions[0];
+          const oldAmt = lastTx.amount;
+          lastTx.amount = newAmt;
+
+          if (supabaseConnected && supabase) {
+            try { await supabase.from('transactions').update({ amount: newAmt }).eq('id', lastTx.id); } catch (e) {}
+          }
+          saveDataLocal();
+          broadcast('STATE_UPDATE', { transactions, summary: getSummary(), settings });
+
+          await waSocket.sendMessage(jid, { text:
+            `✏️ *TRANSAKSI BERHASIL DIREVISI!*\n\n` +
+            `📝 ${lastTx.title}\n` +
+            `💰 Nominal Lama: Rp ${Number(oldAmt).toLocaleString('id-ID')}\n` +
+            `✨ Nominal Baru: Rp ${Number(newAmt).toLocaleString('id-ID')}\n` +
+            `✅ Success`
+          });
+          return;
+        }
+
+        // !y budget / !y sisa - Kalkulator Sisa Uang Aman per Hari
+        if (lower === '!y budget' || lower === '!y sisa') {
+          const now = new Date();
+          const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+          const remainingDays = Math.max(1, lastDayOfMonth - now.getDate() + 1);
+
+          const monthTx = transactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          const inc = monthTx.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount), 0);
+          const exp = monthTx.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0);
+          const remainingMoney = inc - exp;
+          const safeDaily = Math.max(0, Math.floor(remainingMoney / remainingDays));
+
+          await waSocket.sendMessage(jid, { text:
+            `*🧮 KALKULATOR BUDGET BULANAN*\n\n` +
+            `💰 Sisa Uang Bulan Ini: Rp ${remainingMoney.toLocaleString('id-ID')}\n` +
+            `📅 Sisa Hari: ${remainingDays} hari lagi\n` +
+            `🛡️ *Budget Aman per Hari*: Rp ${safeDaily.toLocaleString('id-ID')}/hari\n\n` +
+            `💡 _Jaga pengeluaranmu di bawah Rp ${safeDaily.toLocaleString('id-ID')}/hari agar saldomu tetap positif sampai akhir bulan!_`
+          });
+          return;
+        }
+
+        // !y report - Laporan Rekap Ringkas
+        if (lower === '!y report') {
+          const s = getSummary();
+          const now = new Date();
+          const monthTx = transactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          const inc = monthTx.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount), 0);
+          const exp = monthTx.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0);
+
+          await waSocket.sendMessage(jid, { text:
+            `*📊 LAPORAN KEUANGAN WEALTH RADAR*\n\n` +
+            `💰 *Net Worth Total*: Rp ${Number(s.netWorth).toLocaleString('id-ID')}\n` +
+            `📈 Total Pemasukan Bulan Ini: Rp ${inc.toLocaleString('id-ID')}\n` +
+            `📉 Total Pengeluaran Bulan Ini: Rp ${exp.toLocaleString('id-ID')}\n` +
+            `💵 Sisa Net Financial: Rp ${(inc - exp).toLocaleString('id-ID')}\n` +
+            `❤️ Skor Kesehatan Keuangan: ${s.score}/100 (${s.healthBadge})\n\n` +
+            `✅ Laporan Siap`
+          });
+          return;
+        }
+
+        // !y piutang - Daftar Orang yang Masih Memiliki Utang/Pinjaman
+        if (lower === '!y piutang' || lower === '!y utang') {
+          const debtTx = transactions.filter(t => t.category === 'DEBT');
+          if (debtTx.length === 0) {
+            await waSocket.sendMessage(jid, { text: '🎉 *Bersih!* Tidak ada catatan piutang / utang saat ini.' });
+            return;
+          }
+          let debtMsg = '*📋 DAFTAR CATATAN PIUTANG / UTANG*\n\n';
+          debtTx.slice(0, 10).forEach(t => {
+            const emoji = t.type === 'INCOME' ? '🟢 Lunas/Terima' : '🔴 Belum Lunas';
+            debtMsg += `• ${t.title}: Rp ${Number(t.amount).toLocaleString('id-ID')} (${emoji})\n`;
+          });
+          await waSocket.sendMessage(jid, { text: debtMsg });
           return;
         }
 
