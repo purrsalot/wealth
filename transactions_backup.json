@@ -1,0 +1,32 @@
+{
+  "transactions": [
+    {
+      "id": "tx_1785845458774_h0gu",
+      "title": "Makan ayapi",
+      "amount": 81000,
+      "type": "EXPENSE",
+      "category": "FOOD",
+      "wallet": "BCA",
+      "date": "2026-08-04T12:10:58.000Z"
+    },
+    {
+      "id": "tx_saldo_bca_1785837132988",
+      "title": "Saldo Awal BCA",
+      "amount": 356.381,
+      "type": "INCOME",
+      "category": "SALARY",
+      "wallet": "BCA",
+      "date": "2026-08-04T09:52:12.988Z"
+    }
+  ],
+  "settings": {
+    "targetIncome": 10000000,
+    "wallets": [
+      "BCA",
+      "GOPAY",
+      "CASH"
+    ],
+    "superLeaderJid": "164647839756518@lid"
+  },
+  "backupTime": "2026-08-04T12:54:21.466Z"
+}

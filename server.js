@@ -1160,12 +1160,17 @@ if (require.main === module && !process.env.VERCEL) {
           await addTransaction(txOut);
           await addTransaction(txIn);
 
+          const sTf = getSummary();
+          const fromBal = sTf.walletBalances[fromW] || 0;
+          const toBal = sTf.walletBalances[toW] || 0;
+
           await waSocket.sendMessage(jid, { text:
-            `🔄 *TRANSFER ANTAK DOMPET BERHASIL!*\n\n` +
+            `🔄 *TRANSFER ANTAK DOMPET BERHASIL!* 🤖\n\n` +
             `💰 Nominal: Rp ${amount.toLocaleString('id-ID')}\n` +
-            `📤 Dari: *${fromW}*\n` +
-            `📥 Ke: *${toW}*\n` +
-            `✅ Net Worth Tetap Utuh!`
+            `📤 Dari: *${fromW}* (Sisa: Rp ${fromBal.toLocaleString('id-ID')})\n` +
+            `📥 Ke: *${toW}* (Saldo Akhir: Rp ${toBal.toLocaleString('id-ID')})\n` +
+            `💵 *Total Net Worth*: Rp ${sTf.netWorth.toLocaleString('id-ID')} (Utuh!)\n\n` +
+            `✅ Success`
           });
           return;
         }
@@ -1181,9 +1186,13 @@ if (require.main === module && !process.env.VERCEL) {
           const emoji = tx.type === 'INCOME' ? '📈' : '📉';
           const dateStr = new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+          const s = getSummary();
+          const endingWalletBal = s.walletBalances[tx.wallet] || 0;
+          const netWorth = s.netWorth;
+
           // Calculate Today's Expense Warning
           const todayStr = new Date().toDateString();
-          const todayExp = transactions.filter(t => t.type === 'EXPENSE' && new Date(t.date).toDateString() === todayStr).reduce((s, t) => s + Number(t.amount), 0);
+          const todayExp = transactions.filter(t => t.type === 'EXPENSE' && new Date(t.date).toDateString() === todayStr).reduce((st, t) => st + Number(t.amount), 0);
           let warningText = '';
           if (todayExp > 300000) {
             warningText = `\n⚠️ *WARNING*: Total pengeluaran hari ini Rp ${todayExp.toLocaleString('id-ID')}! Hemat bro!`;
@@ -1193,12 +1202,19 @@ if (require.main === module && !process.env.VERCEL) {
             ? `Mantap banget boss! Dompet ${tx.wallet} makin tebal! 🔥`
             : `Siap boss! Pengeluaran dari ${tx.wallet} sudah KAEL catat rapi. 👌`;
 
+          const sign = tx.type === 'INCOME' ? '+' : '-';
+          const walletBalText = tx.type === 'INCOME'
+            ? `📊 Saldo Akhir *${tx.wallet}*: Rp ${endingWalletBal.toLocaleString('id-ID')} (📈 +Rp ${Number(tx.amount).toLocaleString('id-ID')})`
+            : `📊 Sisa Saldo *${tx.wallet}*: Rp ${endingWalletBal.toLocaleString('id-ID')} (📉 -Rp ${Number(tx.amount).toLocaleString('id-ID')})`;
+
           await waSocket.sendMessage(jid, { text:
             `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT BY KAEL!* 🤖\n\n` +
             `📝 ${tx.title}\n` +
-            `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
+            `💰 Nominal: ${sign}Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
             `💳 Dompet: *${tx.wallet}* | 📂 Kategori: *${tx.category}*\n` +
             `🕒 Waktu: ${dateStr}\n\n` +
+            `${walletBalText}\n` +
+            `💵 *Total Net Worth*: Rp ${netWorth.toLocaleString('id-ID')}\n\n` +
             `✨ *Pesan KAEL*: ${commentText}\n` +
             `✅ Success${warningText}`
           });
