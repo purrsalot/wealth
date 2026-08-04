@@ -415,11 +415,14 @@ if (require.main === module && !process.env.VERCEL) {
   });
 
   function isDuplicateTransaction(tx) {
+    if (!tx || !tx.amount) return false;
     return transactions.some(t => {
       const isSameTitle = (t.title || '').toLowerCase().trim() === (tx.title || '').toLowerCase().trim();
       const isSameAmount = Number(t.amount) === Number(tx.amount);
       const isSameWallet = (t.wallet || 'CASH').toUpperCase() === (tx.wallet || 'CASH').toUpperCase();
-      const dateDiff = Math.abs(new Date(t.date).getTime() - new Date(tx.date).getTime());
+      const tTime = new Date(t.date).getTime() || 0;
+      const txTime = new Date(tx.date).getTime() || Date.now();
+      const dateDiff = Math.abs(tTime - txTime);
       return isSameTitle && isSameAmount && isSameWallet && dateDiff < 86400000;
     });
   }
@@ -731,6 +734,8 @@ if (require.main === module && !process.env.VERCEL) {
 
         const text = msg.message.conversation
           || msg.message.extendedTextMessage?.text
+          || msg.message.imageMessage?.caption
+          || msg.message.videoMessage?.caption
           || '';
 
         const jid = msg.key.remoteJid;
