@@ -517,12 +517,11 @@ if (require.main === module && !process.env.VERCEL) {
         }
         process.exit(0);
       };
-
       process.once('SIGINT', () => handleShutdown('SIGINT'));
       process.once('SIGTERM', () => handleShutdown('SIGTERM'));
 
       // ==========================================
-      // HANDLE INCOMING WA MESSAGES
+      // HANDLE INCOMING WA MESSAGES (OWNER ONLY FILTER)
       // ==========================================
       waSocket.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
@@ -538,8 +537,18 @@ if (require.main === module && !process.env.VERCEL) {
         // Only process !y commands
         if (!lower.startsWith('!y')) return;
 
+        // Owner Security Check: Only allow commands from owner's linked number / self
+        const ownerJid = waSocket.user?.id ? waSocket.user.id.split(':')[0].split('@')[0] : '';
+        const senderJid = (msg.key.participant || msg.key.remoteJid || '').split(':')[0].split('@')[0];
+        const isOwner = msg.key.fromMe || (ownerJid && (senderJid === ownerJid || jid.startsWith(ownerJid)));
+
+        if (!isOwner) {
+          internalLog(`🛡️ Pesan "${text}" DIABAIKAN karena dikirim dari nomor lain (${senderJid})`);
+          return;
+        }
+
         lastUserJid = jid;
-        console.log(`📩 WA Message: "${text}"`);
+        internalLog(`📩 Pesan WA diterima dari Owner (${senderJid}): "${text}"`);
 
         // !y help
         if (lower === '!y help' || lower === '!y') {
