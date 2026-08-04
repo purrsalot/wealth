@@ -376,9 +376,10 @@ if (require.main === module && !process.env.VERCEL) {
       const waSocket = makeWASocket({
         auth: authState,
         printQRInTerminal: false,
-        browser: ['WealthRadarID', 'Chrome', '121.0.0.0'],
+        browser: Browsers.ubuntu('Desktop'),
         syncFullHistory: false,
-        markOnlineOnConnect: true
+        markOnlineOnConnect: true,
+        generateHighQualityLinkPreview: true
       });
 
       waSocket.ev.on('creds.update', saveCreds);
