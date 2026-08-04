@@ -382,6 +382,7 @@ if (require.main === module && !process.env.VERCEL) {
   try {
     const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
     const qrcodeTerm = require('qrcode-terminal');
+    const P = require('pino');
 
     let isReconnecting = false;
 
@@ -392,6 +393,7 @@ if (require.main === module && !process.env.VERCEL) {
       const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
       const waSocket = makeWASocket({
         auth: authState,
+        logger: P({ level: 'silent' }),
         printQRInTerminal: false,
         browser: Browsers.ubuntu('Desktop'),
         syncFullHistory: false,
