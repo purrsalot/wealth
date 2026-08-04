@@ -1,3 +1,10 @@
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+const path = require('path');
+const fs = require('fs');
+const cors = require('cors');
+
 // Global Process Exception Shields (Prevents process crashes)
 process.on('uncaughtException', (err) => {
   console.error('🛡️ [SECURITY SHIELD] Uncaught Exception intercepted:', err.message);
