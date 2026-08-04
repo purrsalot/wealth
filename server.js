@@ -764,22 +764,23 @@ if (require.main === module && !process.env.VERCEL) {
         lastUserJid = jid;
         internalLog(`📩 Pesan WA diterima dari Owner (${cleanSender}): "${text}"`);
 
-        // !y help
-        if (lower === '!y help' || lower === '!y') {
+        // !y help / kael
+        if (lower === '!y help' || lower === '!y' || lower === 'kael' || lower === 'halo kael') {
           await waSocket.sendMessage(jid, { text:
-            `*📊 WEALTH RADAR // ID - COMMAND LIST*\n\n` +
-            `*Catat Bebas* → Ketik biasa, contoh: _bca 50k makan siang_ atau _someone kasih 100k gopay_\n\n` +
-            `*!y edit [nominal]* → Revisi nominal transaksi terakhir\n` +
-            `*!y sisa / !y budget* → Hitung budget harian aman s/d akhir bulan\n` +
-            `*!y report* → Laporan ringkas keuangan\n` +
-            `*!y piutang* → Daftar catatan utang/piutang\n` +
-            `*!y status* → Cek status server & database\n` +
-            `*!y sync* → Sinkronisasi pesan pending\n` +
-            `*!y total* → Total saldo Net Worth\n` +
-            `*!y undo* → Hapus transaksi terakhir\n` +
-            `*!y bulan* → Rekap transaksi bulan ini\n` +
-            `*!y cat* → Breakdown per kategori\n` +
-            `*!y [dompet]* → Cek saldo spesifik (contoh: _!y bca_)`
+            `✨ *HALO BOSS! AKU KAEL - ASISTEN KEUANGAN PRIBADI KAMU!* 🤖💰\n\n` +
+            `*Catat Bebas* ➔ Ketik biasa tanpa ribet, contoh:\n` +
+            `• _bca 50k makan siang_\n` +
+            `• _dikirim mama 100k gopay_\n` +
+            `• _kevin bayar 300k_\n\n` +
+            `⚡ *Perintah Cepat KAEL*:\n` +
+            `• *!y edit [nominal]* ➔ Revisi transaksi terakhir\n` +
+            `• *!y sisa / !y budget* ➔ Hitung budget aman harian\n` +
+            `• *!y report* ➔ Laporan rekap keuangan\n` +
+            `• *!y piutang* ➔ Catatan utang & pinjaman\n` +
+            `• *!y tf 500k bca ke gopay* ➔ Pindah saldo antar dompet\n` +
+            `• *!y saldo bca 5jt* ➔ Set saldo awal dompet\n` +
+            `• *!y status* ➔ Cek kesehatan server KAEL\n\n` +
+            `👉 _Tinggal ketik pesan transaksi di sini, KAEL langsung urus semuanya!_`
           });
           return;
         }
@@ -1130,12 +1131,17 @@ if (require.main === module && !process.env.VERCEL) {
             warningText = `\n⚠️ *WARNING*: Total pengeluaran hari ini Rp ${todayExp.toLocaleString('id-ID')}! Hemat bro!`;
           }
 
+          const commentText = tx.type === 'INCOME' 
+            ? `Mantap banget boss! Dompet ${tx.wallet} makin tebal! 🔥`
+            : `Siap boss! Pengeluaran dari ${tx.wallet} sudah KAEL catat rapi. 👌`;
+
           await waSocket.sendMessage(jid, { text:
-            `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT!*\n\n` +
+            `${emoji} *${tx.type === 'INCOME' ? 'PEMASUKAN' : 'PENGELUARAN'} TERCATAT BY KAEL!* 🤖\n\n` +
             `📝 ${tx.title}\n` +
             `💰 Rp ${Number(tx.amount).toLocaleString('id-ID')}\n` +
-            `💳 ${tx.wallet} | 📂 ${tx.category}\n` +
-            `🕒 Waktu: ${dateStr}\n` +
+            `💳 Dompet: *${tx.wallet}* | 📂 Kategori: *${tx.category}*\n` +
+            `🕒 Waktu: ${dateStr}\n\n` +
+            `✨ *Pesan KAEL*: ${commentText}\n` +
             `✅ Success${warningText}`
           });
           return;
