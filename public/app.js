@@ -7,6 +7,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusText = document.getElementById('statusText');
   const statusDot = document.getElementById('statusDot');
 
+  function showToast(message) {
+    let toast = document.getElementById('appToast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'appToast';
+      toast.style.cssText = `
+        position: fixed; bottom: 24px; right: 24px; z-index: 99999;
+        padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 0.88rem;
+        background: rgba(15, 23, 42, 0.95); color: #fff; border: 1px solid rgba(59, 130, 246, 0.4);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5); backdrop-filter: blur(10px);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0; transform: translateY(20px);
+      `;
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(20px)';
+    }, 3500);
+  }
+
   const loggerForm = document.getElementById('loggerForm');
   const loggerInput = document.getElementById('loggerInput');
   const btnMic = document.getElementById('btnMic');
@@ -207,6 +230,15 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           const data = JSON.parse(event.data);
           const payload = data.payload || {};
+          if (data.event === 'STATE_UPDATE' || data.event === 'INIT_STATE') {
+            if (payload.transactions) state.transactions = payload.transactions;
+            if (payload.summary) state.summary = payload.summary;
+            if (payload.settings) state.settings = payload.settings;
+            renderDashboard();
+            if (data.event === 'STATE_UPDATE') {
+              showToast('✨ Data Keuangan Berhasil Di-update oleh KAEL!');
+            }
+          }
           if (data.event === 'WA_STATUS' || data.event === 'INIT_STATE') {
             if (payload.waStatus) updateWaStatusUI(payload.waStatus);
             if (payload.status) updateWaStatusUI(payload.status);

@@ -451,10 +451,10 @@ if (require.main === module && !process.env.VERCEL) {
       FAMILY: ['mama', 'papa', 'ortu', 'orang tua', 'kakak', 'kaka', 'adik', 'anak', 'keluarga', 'family', 'sangu'],
       GIFT: ['dikirim', 'dikirimin', 'kiriman', 'dikasih', 'kasih', 'ngasih', 'pemberian', 'amplop', 'kado', 'hadiah', 'hibah'],
       DEBT: ['utang', 'hutang', 'bayar utang', 'pelunasan', 'cicilan', 'pinjaman', 'pinjam', 'talangan'],
-      FOOD: ['makan', 'minum', 'kopi', 'ayam', 'nasi', 'snack', 'jajan', 'warteg', 'bakso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto', 'resto', 'kafe', 'cafe', 'es', 'kuliner'],
-      TRANSPORT: ['grab', 'gojek', 'bensin', 'pertamax', 'parkir', 'tol', 'ojol', 'taxi', 'bus', 'kereta', 'mrt', 'service', 'oli', 'ban', 'tambal', 'angkot'],
-      BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos', 'bpjs', 'pajak', 'asuransi', 'langganan', 'tagihan'],
-      SHOPPING: ['beli', 'baju', 'celana', 'sepatu', 'tas', 'gadget', 'hp', 'laptop', 'shopee', 'tokped', 'tokopedia', 'lazada', 'blibli', 'buku', 'belanja', 'supermarket'],
+      FOOD: ['makan', 'mkn', 'minum', 'mnm', 'kopi', 'ngopi', 'ayam', 'nasi', 'snack', 'jajan', 'ngemil', 'warteg', 'bakso', 'bso', 'mie', 'pizza', 'burger', 'starbucks', 'indomie', 'gorengan', 'sate', 'soto', 'resto', 'kafe', 'cafe', 'es', 'kuliner', 'seblak', 'boba', 'martabak', 'geprek'],
+      TRANSPORT: ['grab', 'gojek', 'bensin', 'bsn', 'pertamax', 'pertalite', 'parkir', 'parkiran', 'tol', 'ojol', 'taxi', 'bus', 'kereta', 'mrt', 'lrt', 'service', 'servis', 'oli', 'ban', 'tambal', 'angkot', 'maxim', 'indrive'],
+      BILLS: ['listrik', 'pln', 'wifi', 'indihome', 'biznet', 'myrepublic', 'pulsa', 'internet', 'air', 'pdam', 'gas', 'sewa', 'kos', 'kost', 'kontrakan', 'bpjs', 'pajak', 'asuransi', 'langganan', 'tagihan', 'laundry'],
+      SHOPPING: ['beli', 'baju', 'kaos', 'jaket', 'celana', 'sepatu', 'tas', 'gadget', 'hp', 'laptop', 'shopee', 'tokped', 'tokopedia', 'lazada', 'blibli', 'buku', 'belanja', 'supermarket', 'skincare', 'makeup', 'helm', 'helem'],
       INVESTMENT: ['invest', 'saham', 'reksadana', 'crypto', 'tabung', 'deposito', 'emas', 'nabung', 'bibit', 'pintu', 'sekuritas'],
       SALARY: ['gaji', 'salary', 'freelance', 'bonus', 'thr', 'proyek', 'gajian'],
       ENTERTAINMENT: ['nonton', 'bioskop', 'game', 'steam', 'netflix', 'spotify', 'youtube', 'konser', 'tiket', 'rekreasi', 'liburan'],
@@ -467,13 +467,14 @@ if (require.main === module && !process.env.VERCEL) {
     // 1. Order-Independent Amount Detection
     let amount = 0;
     let amountRawMatch = '';
-    const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|k|jt|juta|m)?/i);
+    const amtMatch = lower.match(/(\d+[\.,]?\d*)\s*(rb|ribu|rbn|k|jt|juta|m|miliar|milyar|b)?/i);
     if (amtMatch) {
       amountRawMatch = amtMatch[0];
       amount = parseFloat(amtMatch[1].replace(',', '.'));
       const unit = (amtMatch[2] || '').toLowerCase();
-      if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1000;
+      if (unit === 'rb' || unit === 'ribu' || unit === 'rbn' || unit === 'k') amount *= 1000;
       else if (unit === 'jt' || unit === 'juta' || unit === 'm') amount *= 1000000;
+      else if (unit === 'miliar' || unit === 'milyar' || unit === 'b') amount *= 1000000000;
     }
 
     // 2. Order-Independent Wallet Detection
